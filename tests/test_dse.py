@@ -1787,6 +1787,45 @@ class TestAliases(object):
         assert np.isclose(expected, norm(u1), rtol=1e-5)
         assert np.isclose(expected, norm(u2), rtol=1e-5)
 
+    def test_ftemps_option(self):
+        """
+        Test the compiler option `cire-ftemps=True`. This will make CIRE use
+        CompilerFunctions, rather than Arrays, to create temporaries, thus giving
+        control over allocation and deallocation to the user.
+        """
+        grid = Grid(shape=(3, 3, 3))
+        x, y, z = grid.dimensions
+        t = grid.stepping_dim
+
+        f = Function(name='f', grid=grid)
+        u = TimeFunction(name='u', grid=grid, space_order=3)
+        u1 = TimeFunction(name="u1", grid=grid, space_order=3)
+
+        f.data_with_halo[:] = 1.
+        u.data_with_halo[:] = 0.32
+        u1.data_with_halo[:] = 0.32
+
+        # Leads to 3D aliases
+        eqn = Eq(u.forward, ((u[t, x, y, z] + u[t, x+1, y+1, z+1])*3*f +
+                             (u[t, x+2, y+2, z+2] + u[t, x+3, y+3, z+3])*3*f + 1))
+
+        #op0 = Operator(eqn, opt=('noop', {'openmp': True}))
+        op1 = Operator(eqn, opt=('advanced', {'openmp': True, 'cire-mincost-sops': 1,
+                                              'cire-ftemps': True}))
+
+        # Check code generation
+        #xs, ys, zs = self.get_params(op1, 'x0_blk0_size', 'y0_blk0_size', 'z_size')
+        #arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
+        #assert len(arrays) == 1
+        #assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 1
+        #self.check_array(arrays[0], ((1, 1), (1, 1), (1, 1)), (xs+2, ys+2, zs+2), rotate)
+        from IPython import embed; embed()
+
+        # Check numerical output
+        #op0(time_M=1)
+        op1(time_M=1, u=u1)
+        assert np.all(u.data == u1.data)
+
     @pytest.mark.parametrize('rotate', [False, True])
     def test_grouping_fallback(self, rotate):
         """
