@@ -13,7 +13,7 @@ from devito.mpi.routines import (MPIStatusObject, MPIMsgEnriched, MPIRequestObje
                                  MPIRegion)
 from devito.types import (Array, CustomDimension, Symbol as dSymbol, Scalar,
                           PointerArray, Lock, PThreadArray, SharedData, Timer,
-                          DeviceID)
+                          DeviceID, CompilerFunction)
 from devito.symbolics import (IntDiv, ListInitializer, FieldFromPointer,
                               FunctionFromPointer, DefFunction)
 from examples.seismic import (demo_model, AcquisitionGeometry,
@@ -452,6 +452,10 @@ def test_mpi_objects():
     new_obj = pickle.loads(pkl_obj)
     assert obj.name == new_obj.name
     assert obj.dtype == new_obj.dtype
+
+
+def test_compilerfunction():
+    from IPython import embed; embed()
 
 
 @skipif(['nompi'])

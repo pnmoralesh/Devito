@@ -27,7 +27,7 @@ from devito.types.caching import CacheManager
 from devito.types.basic import AbstractFunction, Size
 from devito.types.utils import Buffer, DimensionTuple, NODE, CELL
 
-__all__ = ['Function', 'TimeFunction', 'SubFunction']
+__all__ = ['Function', 'TimeFunction', 'SubFunction', 'CompilerFunction']
 
 
 RegionMeta = namedtuple('RegionMeta', 'offset size')
@@ -1454,3 +1454,91 @@ class SubFunction(Function):
         return self._parent
 
     _pickle_kwargs = Function._pickle_kwargs + ['parent']
+
+
+class CompilerFunction(DiscreteFunction):
+
+    is_CompilerFunction = True
+
+    @classmethod
+    def __indices_setup__(cls, **kwargs):
+        return as_tuple(kwargs['dimensions']), as_tuple(kwargs['dimensions'])
+
+    @property
+    def data(self):
+        # Any attempt at allocating data by the user should fail miserably
+        raise TypeError("Cannot allocate data for a CompilerFunction")
+
+    data_with_halo = data
+
+    def make(self, shape, initializer=None):
+        """
+        Create a Function which can be used to override this CompilerFunction
+        in a call to `op.apply(...)`.
+
+        Parameters
+        ----------
+        shape : tuple of ints
+            Shape of the domain region in grid points.
+        initializer : callable or any object exposing the buffer interface, optional
+            Data initializer. If a callable is provided, data is allocated lazily.
+        """
+        return Function(name=self.name, dtype=self.dtype, dimensions=self.dimensions,
+                        shape=self.shape, halo=halo, initializer=initializer)
+
+    def _arg_defaults(self, alias=None):
+        pass
+        #key = alias or self
+        #args = ReducerMap({key.name: self._data_buffer})
+#
+#        # Collect default dimension arguments from all indices
+#        for i, s in zip(key.dimensions, self.shape):
+#            args.update(i._arg_defaults(_min=0, size=s))
+#
+#        # Add value overrides associated with the Grid
+#        if self.grid is not None:
+#            args.update(self.grid._arg_defaults())
+#
+#        return args
+
+    def _arg_values(self, **kwargs):
+        pass
+        # Add value override for own data if it is provided, otherwise
+        # use defaults
+        #if self.name in kwargs:
+        #    new = kwargs.pop(self.name)
+        #    if isinstance(new, DiscreteFunction):
+        #        # Set new values and re-derive defaults
+        #        values = new._arg_defaults(alias=self).reduce_all()
+        #    else:
+        #        # We've been provided a pure-data replacement (array)
+        #        values = {self.name: new}
+        #        # Add value overrides for all associated dimensions
+        #        for i, s in zip(self.dimensions, new.shape):
+        #            size = s - sum(self._size_nodomain[i])
+        #            values.update(i._arg_defaults(size=size))
+        #        # Add value overrides associated with the Grid
+        #        if self.grid is not None:
+        #            values.update(self.grid._arg_defaults())
+        #else:
+        #    values = self._arg_defaults(alias=self).reduce_all()
+        #
+        #return values
+
+    def _arg_check(self, args, intervals):
+        pass
+        #if self.name not in args:
+        #    raise InvalidArgument("No runtime value for `%s`" % self.name)
+        #key = args[self.name]
+        #if len(key.shape) != self.ndim:
+        #    raise InvalidArgument("Shape %s of runtime value `%s` does not match "
+        #                          "dimensions %s" %
+        #                          (key.shape, self.name, self.dimensions))
+        #if key.dtype != self.dtype:
+        #    warning("Data type %s of runtime value `%s` does not match the "
+        #            "Function data type %s" % (key.dtype, self.name, self.dtype))
+        #for i, s in zip(self.dimensions, key.shape):
+        #    i._arg_check(args, s, intervals[i])
+
+    # Pickling support
+    _pickle_kwargs = DiscreteFunction._pickle_kwargs + ['dimensions']
