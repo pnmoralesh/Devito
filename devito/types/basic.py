@@ -1042,6 +1042,7 @@ class Pointer(sympy.Function, Basic, Pickable):
     """
 
     is_Pointer = True
+    is_Tensor = True
 
     def __new__(cls, **kwargs):
         options = kwargs.get('options', {'evaluate': False})
