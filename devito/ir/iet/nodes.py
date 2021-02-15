@@ -833,9 +833,9 @@ class Dereference(ExprStmt, Node):
 
     """
     A node encapsulating a dereference from a `pointer` to a `pointee`.
-    Two cases are supported:
+    The following cases are supported:
 
-        * `pointer` is a Pointer and `pointee` is an AbstractFunction (typical case).
+        * `pointer` is a PointerArray and `pointee` is an Array (typical case).
         * `pointer` is an ArrayObject representing a pointer to a C struct while
           `pointee` is a field in `pointer`.
     """
@@ -855,7 +855,7 @@ class Dereference(ExprStmt, Node):
 
     @property
     def free_symbols(self):
-        return ((self.pointee.indexed.label, self.pointer.label) +
+        return ((self.pointee.indexed.label, self.pointer.indexed.label) +
                 tuple(flatten(i.free_symbols for i in self.pointee.symbolic_shape[1:])) +
                 tuple(self.pointer.free_symbols))
 

@@ -260,7 +260,7 @@ class PragmaShmTransformer(PragmaSimdTransformer):
             elif i in parrays:
                 pi = parrays[i]
             else:
-                pi = parrays.setdefault(i, i._make_pointer(dimensions=self.threadid))
+                pi = parrays.setdefault(i, i._make_pointer(dim=self.threadid))
             vexpandeds.append(VExpanded(i, pi))
 
         if vexpandeds:

@@ -13,7 +13,7 @@ from devito.mpi.routines import (MPIStatusObject, MPIMsgEnriched, MPIRequestObje
                                  MPIRegion)
 from devito.types import (Array, CustomDimension, Symbol as dSymbol, Scalar,
                           Lock, PThreadArray, SharedData, Timer, DeviceID,
-                          CompilerFunction, Pointer)
+                          CompilerFunction)
 from devito.symbolics import (IntDiv, ListInitializer, FieldFromPointer,
                               FunctionFromPointer, DefFunction)
 from examples.seismic import (demo_model, AcquisitionGeometry,
@@ -119,20 +119,6 @@ def test_array():
     assert new_a.padding == ((2, 2), (2, 2))
     assert new_a.space == 'remote'
     assert new_a.scope == 'stack'
-
-
-def test_pointer():
-    grid = Grid(shape=(3, 3))
-    d = Dimension(name='d')
-
-    f = Function(name='f', grid=grid)
-    pf = Pointer(name='pf', dimensions=d, pointee=f)
-
-    pkl_pf = pickle.dumps(pf)
-    new_pf = pickle.loads(pkl_pf)
-    assert new_pf.name == pf.name
-    assert new_pf.dim.name == 'd'
-    assert new_pf.pointee.name == 'f'
 
 
 def test_sub_dimension():

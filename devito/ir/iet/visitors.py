@@ -208,7 +208,7 @@ class CGen(Visitor):
             obj = '%s->%s' % (o.obj.name, f._C_name)
         else:
             obj = f._C_name
-        if f.is_Pointer:
+        if f.is_PointerArray:
             rvalue = '(%s**) %s' % (f._C_typedata, obj)
             lvalue = c.Value(f._C_typedata, '**%s' % f.name)
         else:
@@ -225,7 +225,7 @@ class CGen(Visitor):
 
     def visit_Dereference(self, o):
         a0, a1 = o.functions
-        if a1.is_Pointer:
+        if a1.is_PointerArray or a1.is_CompilerFunction:
             shape = ''.join("[%s]" % ccode(i) for i in a0.symbolic_shape[1:])
             rvalue = '(%s (*)%s) %s[%s]' % (a1._C_typedata, shape, a1.name, a1.dim.name)
             lvalue = c.AlignedAttribute(a0._data_alignment,

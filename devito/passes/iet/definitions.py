@@ -247,7 +247,7 @@ class DataManager(object):
                     elif i.is_ObjectArray:
                         # ObjectArrays get placed at the top of the IET
                         self._alloc_object_array_on_low_lat_mem(iet, i, storage)
-                    elif i.is_Pointer and i.pointee.is_Array:
+                    elif i.is_PointerArray:
                         # PointerArrays get placed at the top of the IET
                         self._alloc_pointed_array_on_high_bw_mem(iet, i, storage)
                 except AttributeError:

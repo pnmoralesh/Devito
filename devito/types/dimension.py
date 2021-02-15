@@ -1234,7 +1234,7 @@ class CustomDimension(BasicDimension):
         else:
             return self._symbolic_size
 
-    def _arg_defaults(self):
+    def _arg_defaults(self, **kwargs):
         return {}
 
     def _arg_values(self, *args, **kwargs):

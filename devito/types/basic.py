@@ -12,15 +12,14 @@ from cgen import Struct, Value
 
 from devito.data import default_allocator
 from devito.symbolics import aligned_indices
-from devito.tools import (Pickable, as_tuple, ctypes_to_cstr, dtype_to_cstr,
-                          dtype_to_ctype, frozendict, memoized_meth)
+from devito.tools import (Pickable, ctypes_to_cstr, dtype_to_cstr, dtype_to_ctype,
+                          frozendict, memoized_meth)
 from devito.types.args import ArgProvider
 from devito.types.caching import Cached
 from devito.types.lazy import Evaluable
 from devito.types.utils import DimensionTuple
 
-__all__ = ['Symbol', 'Scalar', 'Indexed', 'Pointer', 'Object', 'LocalObject',
-           'CompositeObject']
+__all__ = ['Symbol', 'Scalar', 'Indexed', 'Object', 'LocalObject', 'CompositeObject']
 
 
 Size = namedtuple('Size', 'left right')
@@ -68,10 +67,10 @@ class Basic(object):
     is_Symbol = False
     is_ArrayBasic = False
     is_Array = False
+    is_PointerArray = False
     is_ObjectArray = False
     is_Object = False
     is_LocalObject = False
-    is_Pointer = False
 
     # Created by the user
     is_Input = False
@@ -909,8 +908,9 @@ class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
     def _C_symbol(self):
         return BoundSymbol(name=self._C_name, dtype=self.dtype, function=self.function)
 
-    def _make_pointer(self, dimensions):
-        return Pointer(pointee=self, dimensions=dimensions)
+    def _make_pointer(self):
+        """Generate a symbolic pointer to self."""
+        raise NotImplementedError
 
     @cached_property
     def _size_domain(self):
@@ -1021,106 +1021,6 @@ class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
 
     # Pickling support
     _pickle_kwargs = ['name', 'dtype', 'halo', 'padding']
-    __reduce_ex__ = Pickable.__reduce_ex__
-
-    @property
-    def _pickle_reconstruct(self):
-        return self.__class__.__base__
-
-
-#TODO: ADD BASE COMMON CLASS FOR POINTER AND OBJECT...
-
-
-class Pointer(sympy.Function, Basic, Pickable):
-
-    """
-    Base class for pointers to objects with fundamental type (e.g., int, float).
-
-    Warnings
-    --------
-    Pointers are created and managed directly by Devito.
-    """
-
-    is_Pointer = True
-    is_Tensor = True
-
-    def __new__(cls, **kwargs):
-        options = kwargs.get('options', {'evaluate': False})
-
-        pointee = kwargs.pop('pointee')
-        name = "p%s" % pointee.name
-        dimensions, indices = cls.__indices_setup__(**kwargs)
-
-        # Create new, unique type instance from cls and the symbol name
-        newcls = type(name, (cls,), dict(cls.__dict__))
-
-        # Create the new object
-        # Note: use __xnew__ to bypass sympy caching
-        xnew = sympy.Function.__new__.__wrapped__
-        newobj = xnew(newcls, *indices, **options)
-
-        # Initialization
-        newobj._name = name
-        newobj._pointee = pointee
-        newobj._dimensions = dimensions
-
-        return newobj
-
-    @classmethod
-    def __indices_setup__(cls, **kwargs):
-        return as_tuple(kwargs['dimensions']), as_tuple(kwargs['dimensions'])
-
-    @property
-    def _C_name(self):
-        return self.name
-
-    @property
-    def _C_typename(self):
-        return ctypes_to_cstr(POINTER(self._C_ctype))
-
-    @property
-    def _C_typedata(self):
-        return dtype_to_cstr(self.dtype)
-
-    @property
-    def _C_ctype(self):
-        return POINTER(dtype_to_ctype(self.dtype))
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def dimensions(self):
-        return self._dimensions
-
-    @property
-    def dtype(self):
-        return self.pointee.dtype
-
-    @cached_property
-    def label(self):
-        return Symbol(name=self.name, dtype=self.dtype)
-
-    @property
-    def function(self):
-        return self
-
-    @property
-    def shape(self):
-        return (self.dim,)
-
-    @property
-    def dim(self):
-        """The pointer Dimension. Shortcut for self.dimensions[0]."""
-        return self.dimensions[0]
-
-    @property
-    def pointee(self):
-        return self._pointee
-
-    # Pickling support
-    _pickle_kwargs = ['dimensions', 'pointee']
     __reduce_ex__ = Pickable.__reduce_ex__
 
     @property

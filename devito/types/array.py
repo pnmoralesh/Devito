@@ -9,7 +9,7 @@ from devito.parameters import configuration
 from devito.tools import as_tuple, ctypes_to_cstr, dtype_to_ctype
 from devito.types.basic import AbstractFunction
 
-__all__ = ['Array', 'ArrayObject']
+__all__ = ['Array', 'ArrayObject', 'PointerArray']
 
 
 class ArrayBasic(AbstractFunction):
@@ -168,6 +168,9 @@ class Array(ArrayBasic):
     def free_symbols(self):
         return super().free_symbols - {d for d in self.dimensions if d.is_Default}
 
+    def _make_pointer(self, dim):
+        return PointerArray(name='p%s' % self.name, dimensions=dim, array=self)
+
     # Pickling support
     _pickle_kwargs = AbstractFunction._pickle_kwargs + ['dimensions', 'space', 'scope']
 
@@ -256,3 +259,56 @@ class ArrayObject(ArrayBasic):
     # Pickling support
     _pickle_kwargs = ArrayBasic._pickle_kwargs + ['dimensions', 'fields']
     _pickle_kwargs.remove('dtype')
+
+
+class PointerArray(ArrayBasic):
+
+    """
+    Symbol representing a pointer to an Array.
+
+    Parameters
+    ----------
+    name : str
+        Name of the symbol.
+    dimensions : Dimension
+        The pointer Dimension.
+    array : Array
+        The pointed Array.
+
+    Warnings
+    --------
+    PointerArrays are created and managed directly by Devito (IOW, they are not
+    expected to be used directly in user code).
+    """
+
+    is_PointerArray = True
+
+    def __new__(cls, *args, **kwargs):
+        kwargs.update({'options': {'evaluate': False}})
+        return AbstractFunction.__new__(cls, *args, **kwargs)
+
+    def __init_finalize__(self, *args, **kwargs):
+        super(PointerArray, self).__init_finalize__(*args, **kwargs)
+
+        self._array = kwargs['array']
+        assert self._array.is_Array
+
+    @classmethod
+    def __dtype_setup__(cls, **kwargs):
+        return kwargs['array'].dtype
+
+    @property
+    def _C_typename(self):
+        return ctypes_to_cstr(POINTER(self._C_ctype))
+
+    @property
+    def dim(self):
+        """Shortcut for self.dimensions[0]."""
+        return self.dimensions[0]
+
+    @property
+    def array(self):
+        return self._array
+
+    # Pickling support
+    _pickle_kwargs = ['name', 'dimensions', 'array']
