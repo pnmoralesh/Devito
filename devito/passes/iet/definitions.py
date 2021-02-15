@@ -121,15 +121,12 @@ class DataManager(object):
         Allocate the following objects in the high bandwidth memory:
 
             * The pointer array `obj`;
-            * The pointee Array `obj.array`
+            * The pointee Array `obj.pointee`
 
-        If the pointer array is defined over `sregistry.threadid`, that it a thread
-        Dimension, then each `obj.array` slice is allocated and freed individually
-        by the logically-owning thread.
+        If the pointer array is defined over `sregistry.threadid`, that is a thread
+        Dimension, then each `obj.pointee` slice is allocated and freed individually
+        by the owner thread.
         """
-        #TODO Update doc obj.array -> obj.pointee
-        #TODO Update .array -> .pointee
-
         # The pointer array
         decl = "**%s" % obj.name
         decl = c.Value(obj._C_typedata, decl)
@@ -140,7 +137,7 @@ class DataManager(object):
 
         # The pointee Array
         pobj = '%s[%s]' % (obj.name, obj.dim.name)
-        shape = "".join("[%s]" % i for i in obj.array.symbolic_shape)
+        shape = "".join("[%s]" % i for i in obj.pointee.symbolic_shape)
         size = "sizeof(%s%s)" % (obj._C_typedata, shape)
         alloc1 = c.Statement(self.lang['alloc-host'](pobj, obj._data_alignment, size))
         free1 = c.Statement(self.lang['free-host'](pobj))
@@ -214,12 +211,11 @@ class DataManager(object):
                     continue
                 objs = [k.write]
             elif k.is_Dereference:
-                #TODO: .array -> .pointee
-                placed.append(k.array)
-                if k.parray in placed:
+                placed.append(k.pointee)
+                if k.pointer in placed:
                     objs = []
                 else:
-                    objs = [k.parray]
+                    objs = [k.pointer]
             elif k.is_Call:
                 objs = list(k.functions)
                 if k.retobj is not None:
@@ -251,7 +247,7 @@ class DataManager(object):
                     elif i.is_ObjectArray:
                         # ObjectArrays get placed at the top of the IET
                         self._alloc_object_array_on_low_lat_mem(iet, i, storage)
-                    elif i.is_PointerArray and i.array.is_ArrayBasic:  #TODO .array...
+                    elif i.is_Pointer and i.pointee.is_Array:
                         # PointerArrays get placed at the top of the IET
                         self._alloc_pointed_array_on_high_bw_mem(iet, i, storage)
                 except AttributeError:

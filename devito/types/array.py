@@ -168,12 +168,8 @@ class Array(ArrayBasic):
     def free_symbols(self):
         return super().free_symbols - {d for d in self.dimensions if d.is_Default}
 
-    def _make_pointer(self):
-        from IPython import embed; embed()
-
     # Pickling support
-    _pickle_kwargs = AbstractFunction._pickle_kwargs +\
-        ['dimensions', 'space', 'scope']
+    _pickle_kwargs = AbstractFunction._pickle_kwargs + ['dimensions', 'space', 'scope']
 
 
 class ArrayObject(ArrayBasic):
