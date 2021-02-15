@@ -29,7 +29,7 @@ Offset = namedtuple('Offset', 'left right')
 class Basic(object):
 
     """
-    Three relevant types inherit from this class:
+    Four relevant types inherit from this class:
 
         * AbstractSymbol: represents a scalar; may carry data; may be used
                           to build equations.
@@ -468,6 +468,7 @@ class Scalar(Symbol, ArgProvider):
 
 
 class AbstractTensor(sympy.ImmutableDenseMatrix, Basic, Pickable, Evaluable):
+
     """
     Base class for vector and tensor valued functions. It inherits from and
     mimicks the behavior of a sympy.ImmutableDenseMatrix.
@@ -581,6 +582,7 @@ class AbstractTensor(sympy.ImmutableDenseMatrix, Basic, Pickable, Evaluable):
 
 
 class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
+
     """
     Base class for tensor symbols, cached by both SymPy and Devito. It inherits
     from and mimicks the behaviour of a sympy.Function.
@@ -624,6 +626,7 @@ class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
                                          interpolators.
 
     """
+
     # Sympy attributes, explicitly say these are not Matrices
     is_MatrixLike = False
     is_Matrix = False
@@ -905,6 +908,9 @@ class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
     def _C_symbol(self):
         return BoundSymbol(name=self._C_name, dtype=self.dtype, function=self.function)
 
+    def _make_pointer(self, dimensions):
+        return PointerFunction(pointee=self, dimensions=dimensions)
+
     @cached_property
     def _size_domain(self):
         """Number of points in the domain region."""
@@ -1021,14 +1027,24 @@ class AbstractFunction(sympy.Function, Basic, Cached, Pickable, Evaluable):
         return self.__class__.__base__
 
 
-# Objects belonging to the Devito API not involving data, such as data structures
-# that need to be passed to external libraries
-
-
 class AbstractObject(Basic, sympy.Basic, Pickable):
 
     """
-    Symbol representing a generic pointer object.
+    Base class for pointers to objects with derived type.
+
+    The hierarchy is structured as follows
+
+                         AbstractObject
+                                |
+                 ---------------------------------
+                 |                               |
+              Object                       LocalObject
+                 |
+          CompositeObject
+
+    Warnings
+    --------
+    AbstractObjects are created and managed directly by Devito.
     """
 
     is_AbstractObject = True
@@ -1168,6 +1184,96 @@ class LocalObject(AbstractObject):
     """
 
     is_LocalObject = True
+
+
+class AbstractPointer(sympy.Function, Basic, Pickable):
+
+    """
+    Base class for pointers to objects created by Devito.
+
+    The hierarchy is structured as follows
+
+                         AbstractPointer
+                                |
+                 ---------------------------------
+                 |                               |
+           PointerArray                  PointerFunction
+
+    Warnings
+    --------
+    AbstractPointer are created and managed directly by Devito.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        options = kwargs.get('options', {'evaluate': False})
+
+        pointee = kwargs.pop('pointee')
+        name = "p%s" % pointee.name
+        dimensions, indices = cls.__indices_setup__(**kwargs)
+
+        # Create the new object
+        # Note: use __xnew__ to bypass sympy caching
+        from IPython import embed; embed()
+        newobj = sympy.Symbol.__xnew__(cls, name, *indices, **options)
+
+        # Initialization
+        newobj._name = name
+        newobj._pointee = pointee
+        newobj._dimensions = dimensions
+
+        return newobj
+
+    __hash__ = Cached.__hash__
+
+    @classmethod
+    def __indices_setup__(cls, **kwargs):
+        return as_tuple(kwargs['dimensions']), as_tuple(kwargs['dimensions'])
+
+    @property
+    def _C_name(self):
+        return self.name
+
+    @property
+    def _C_typename(self):
+        return ctypes_to_cstr(POINTER(self._C_ctype))
+
+    @property
+    def _C_typedata(self):
+        return dtype_to_cstr(self.dtype)
+
+    @property
+    def _C_ctype(self):
+        return POINTER(dtype_to_ctype(self.dtype))
+
+    @property
+    def name(self):
+        return ""self._name
+
+    @property
+    def dtype(self):
+        return self.pointee.dtype
+
+    @property
+    def function(self):
+        return self
+
+    @property
+    def shape(self):
+        return (self.dim,)
+
+    @property
+    def dim(self):
+        """The pointer Dimension. Shortcut for self.dimensions[0]."""
+        return self.dimensions[0]
+
+    @property
+    def pointee(self):
+        return self._pointee
+
+    # Pickling support
+    _pickle_args = []
+    _pickle_kwargs = ['name', 'dimensions', 'pointee']
+    __reduce_ex__ = Pickable.__reduce_ex__
 
 
 # Extended SymPy hierarchy follows, for essentially two reasons:

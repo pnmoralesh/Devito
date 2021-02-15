@@ -52,7 +52,7 @@ class DiscreteFunction(AbstractFunction, ArgProvider, Differentiable):
 
     is_Input = True
     is_DiscreteFunction = True
-    is_Tensor = True
+    is_Tensor = True  #TODO: move it to AbstractFunction ???
 
     def __init_finalize__(self, *args, **kwargs):
         # A `Distributor` to handle domain decomposition (only relevant for MPI)

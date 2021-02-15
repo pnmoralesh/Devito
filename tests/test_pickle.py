@@ -12,8 +12,10 @@ from devito.mpi.halo_scheme import Halo
 from devito.mpi.routines import (MPIStatusObject, MPIMsgEnriched, MPIRequestObject,
                                  MPIRegion)
 from devito.types import (Array, CustomDimension, Symbol as dSymbol, Scalar,
-                          PointerArray, Lock, PThreadArray, SharedData, Timer,
-                          DeviceID, CompilerFunction)
+                          Lock, PThreadArray, SharedData, Timer, DeviceID,
+                          CompilerFunction)
+from devito.types.array import PointerArray
+from devito.types.dense import PointerFunction
 from devito.symbolics import (IntDiv, ListInitializer, FieldFromPointer,
                               FunctionFromPointer, DefFunction)
 from examples.seismic import (demo_model, AcquisitionGeometry,
@@ -128,6 +130,21 @@ def test_array():
     assert new_pa.name == pa.name
     assert new_pa.dim.name == 'd'
     assert new_pa.array.name == 'a'
+
+
+def test_pointerfunction():
+    grid = Grid(shape=(3, 3))
+    d = Dimension(name='d')
+
+    f = Function(name='f', grid=grid)
+    pf = PointerFunction(name='pf', dimensions=d, pointee=f)
+    from IPython import embed; embed()
+
+    pkl_pf = pickle.dumps(pf)
+    new_pf = pickle.loads(pkl_pf)
+    assert new_pf.name == pa.name
+    assert new_pf.dim.name == 'd'
+    assert new_pf.pointee.name == 'f'
 
 
 def test_sub_dimension():

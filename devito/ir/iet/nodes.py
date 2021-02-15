@@ -835,7 +835,7 @@ class Dereference(ExprStmt, Node):
     A node encapsulating a dereference from an object `parray` to another object
     `array`. Two possibilities are supported:
 
-        * `parray` is a PointerArray and `array` is an Array (default case)
+        * `parray` is a Pointer and `array` is an Array (default case)
         * `parray` is an ArrayObject representing a pointer to a C struct while
           `array` is a field in `parray`.
     """
