@@ -252,18 +252,17 @@ class PragmaShmTransformer(PragmaSimdTransformer):
         # Vector-expand all written Arrays within `partree`, since at least
         # one of the parallelized Iterations requires thread-private Arrays
         # E.g. a(x, y) -> b(tid, x, y), where `tid` is the ThreadID Dimension
-        exprs = FindNodes(Expression).visit(partree)
-        warrays = [i.write for i in exprs if i.write.is_Array or i.write.is_CompilerFunction]
-        #TODO: warrays -> wpointees...
-        #TODO: i.write.is_CompilerGenerated
-        #TODO: Update is_ParallelPrivate property __doc__
+        writes = [i.write for i in FindNodes(Expression).visit(partree)]
         vexpandeds = []
-        for i in warrays:
-            if i in parrays:
+        for i in writes:
+            if not (i.is_Array or i.is_CompilerFunction):
+                continue
+            elif i in parrays:
                 pi = parrays[i]
             else:
                 pi = parrays.setdefault(i, i._make_pointer(dimensions=self.threadid))
             vexpandeds.append(VExpanded(i, pi))
+
         if vexpandeds:
             init = c.Initializer(c.Value(self.threadid._C_typedata, self.threadid.name),
                                  self.lang['thread-num'])
@@ -363,7 +362,7 @@ class PragmaShmTransformer(PragmaSimdTransformer):
         # The new arguments introduced by this pass
         args = [i for i in FindSymbols().visit(iet) if isinstance(i, (NThreadsMixin))]
         for n in FindNodes(VExpanded).visit(iet):
-            args.extend([(n.array, True), n.parray])
+            args.extend([(n.pointee, True), n.pointer])
 
         return iet, {'args': args, 'includes': [self.lang['header']]}
 

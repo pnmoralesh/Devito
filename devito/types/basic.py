@@ -84,11 +84,11 @@ class Basic(object):
     is_DiscreteFunction = False
     is_Function = False
     is_TimeFunction = False
+    is_CompilerFunction = False
     is_SparseTimeFunction = False
     is_SparseFunction = False
     is_PrecomputedSparseFunction = False
     is_PrecomputedSparseTimeFunction = False
-    is_CompilerFunction = False  #TODO: NECESSARY??
 
     # Time dependence
     is_TimeDependent = False
@@ -1041,6 +1041,8 @@ class Pointer(sympy.Function, Basic, Pickable):
     Pointers are created and managed directly by Devito.
     """
 
+    is_Pointer = True
+
     def __new__(cls, **kwargs):
         options = kwargs.get('options', {'evaluate': False})
 
@@ -1062,8 +1064,6 @@ class Pointer(sympy.Function, Basic, Pickable):
         newobj._dimensions = dimensions
 
         return newobj
-
-    __hash__ = Cached.__hash__
 
     @classmethod
     def __indices_setup__(cls, **kwargs):
@@ -1096,6 +1096,10 @@ class Pointer(sympy.Function, Basic, Pickable):
     @property
     def dtype(self):
         return self.pointee.dtype
+
+    @cached_property
+    def label(self):
+        return Symbol(name=self.name, dtype=self.dtype)
 
     @property
     def function(self):
