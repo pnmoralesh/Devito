@@ -12,7 +12,7 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB, LangTransformer, DeviceAwareMixin
 from devito.passes.iet.misc import is_on_device
 from devito.tools import as_tuple, is_integer, prod
-from devito.types import PointerArray, Symbol, NThreadsMixin
+from devito.types import Symbol, NThreadsMixin
 
 __all__ = ['PragmaSimdTransformer', 'PragmaShmTransformer',
            'PragmaDeviceAwareTransformer', 'PragmaLangBB']
@@ -254,14 +254,15 @@ class PragmaShmTransformer(PragmaSimdTransformer):
         # E.g. a(x, y) -> b(tid, x, y), where `tid` is the ThreadID Dimension
         exprs = FindNodes(Expression).visit(partree)
         warrays = [i.write for i in exprs if i.write.is_Array or i.write.is_CompilerFunction]
+        #TODO: warrays -> wpointees...
+        #TODO: i.write.is_CompilerGenerated
+        #TODO: Update is_ParallelPrivate property __doc__
         vexpandeds = []
         for i in warrays:
             if i in parrays:
                 pi = parrays[i]
             else:
-                pi = parrays.setdefault(i, PointerArray(name=self.sregistry.make_name(),
-                                                        dimensions=(self.threadid,),
-                                                        array=i))
+                pi = parrays.setdefault(i, i._make_pointer(dimensions=self.threadid))
             vexpandeds.append(VExpanded(i, pi))
         if vexpandeds:
             init = c.Initializer(c.Value(self.threadid._C_typedata, self.threadid.name),
