@@ -13,9 +13,7 @@ from devito.mpi.routines import (MPIStatusObject, MPIMsgEnriched, MPIRequestObje
                                  MPIRegion)
 from devito.types import (Array, CustomDimension, Symbol as dSymbol, Scalar,
                           Lock, PThreadArray, SharedData, Timer, DeviceID,
-                          CompilerFunction)
-from devito.types.array import PointerArray
-from devito.types.dense import PointerFunction
+                          CompilerFunction, Pointer)
 from devito.symbolics import (IntDiv, ListInitializer, FieldFromPointer,
                               FunctionFromPointer, DefFunction)
 from examples.seismic import (demo_model, AcquisitionGeometry,
@@ -122,27 +120,17 @@ def test_array():
     assert new_a.space == 'remote'
     assert new_a.scope == 'stack'
 
-    # Now with a pointer array
-    pa = PointerArray(name='pa', dimensions=d, array=a)
 
-    pkl_pa = pickle.dumps(pa)
-    new_pa = pickle.loads(pkl_pa)
-    assert new_pa.name == pa.name
-    assert new_pa.dim.name == 'd'
-    assert new_pa.array.name == 'a'
-
-
-def test_pointerfunction():
+def test_pointer():
     grid = Grid(shape=(3, 3))
     d = Dimension(name='d')
 
     f = Function(name='f', grid=grid)
-    pf = PointerFunction(name='pf', dimensions=d, pointee=f)
-    from IPython import embed; embed()
+    pf = Pointer(name='pf', dimensions=d, pointee=f)
 
     pkl_pf = pickle.dumps(pf)
     new_pf = pickle.loads(pkl_pf)
-    assert new_pf.name == pa.name
+    assert new_pf.name == pf.name
     assert new_pf.dim.name == 'd'
     assert new_pf.pointee.name == 'f'
 
