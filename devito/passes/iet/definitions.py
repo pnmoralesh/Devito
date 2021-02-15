@@ -127,6 +127,9 @@ class DataManager(object):
         Dimension, then each `obj.array` slice is allocated and freed individually
         by the logically-owning thread.
         """
+        #TODO Update doc obj.array -> obj.pointee
+        #TODO Update .array -> .pointee
+
         # The pointer array
         decl = "**%s" % obj.name
         decl = c.Value(obj._C_typedata, decl)
@@ -211,6 +214,7 @@ class DataManager(object):
                     continue
                 objs = [k.write]
             elif k.is_Dereference:
+                #TODO: .array -> .pointee
                 placed.append(k.array)
                 if k.parray in placed:
                     objs = []
@@ -247,7 +251,7 @@ class DataManager(object):
                     elif i.is_ObjectArray:
                         # ObjectArrays get placed at the top of the IET
                         self._alloc_object_array_on_low_lat_mem(iet, i, storage)
-                    elif i.is_PointerArray:
+                    elif i.is_PointerArray and i.array.is_ArrayBasic:  #TODO .array...
                         # PointerArrays get placed at the top of the IET
                         self._alloc_pointed_array_on_high_bw_mem(iet, i, storage)
                 except AttributeError:

@@ -289,7 +289,7 @@ class PointerArray(ArrayBasic):
         super(PointerArray, self).__init_finalize__(*args, **kwargs)
 
         self._array = kwargs['array']
-        assert self._array.is_Array
+        #assert self._array.is_Array
 
     @classmethod
     def __dtype_setup__(cls, **kwargs):

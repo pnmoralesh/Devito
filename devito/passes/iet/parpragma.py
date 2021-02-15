@@ -253,7 +253,7 @@ class PragmaShmTransformer(PragmaSimdTransformer):
         # one of the parallelized Iterations requires thread-private Arrays
         # E.g. a(x, y) -> b(tid, x, y), where `tid` is the ThreadID Dimension
         exprs = FindNodes(Expression).visit(partree)
-        warrays = [i.write for i in exprs if i.write.is_Array]
+        warrays = [i.write for i in exprs if i.write.is_Array or i.write.is_CompilerFunction]
         vexpandeds = []
         for i in warrays:
             if i in parrays:
