@@ -87,7 +87,7 @@ class Basic(object):
     is_SparseFunction = False
     is_PrecomputedSparseFunction = False
     is_PrecomputedSparseTimeFunction = False
-    is_CompilerFunction = False
+    is_CompilerFunction = False  #TODO: NECESSARY??
 
     # Time dependence
     is_TimeDependent = False
