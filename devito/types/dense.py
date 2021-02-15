@@ -1467,7 +1467,7 @@ class CompilerFunction(DiscreteFunction):
     @property
     def data(self):
         # Any attempt at allocating data by the user should fail miserably
-        raise TypeError("Cannot allocate data for a CompilerFunction")
+        raise TypeError("CompilerFunction cannot allocate data")
 
     data_with_halo = data
 
@@ -1487,22 +1487,11 @@ class CompilerFunction(DiscreteFunction):
                         shape=self.shape, halo=halo, initializer=initializer)
 
     def _arg_defaults(self, alias=None):
-        pass
-        #key = alias or self
-        #args = ReducerMap({key.name: self._data_buffer})
-#
-#        # Collect default dimension arguments from all indices
-#        for i, s in zip(key.dimensions, self.shape):
-#            args.update(i._arg_defaults(_min=0, size=s))
-#
-#        # Add value overrides associated with the Grid
-#        if self.grid is not None:
-#            args.update(self.grid._arg_defaults())
-#
-#        return args
+        raise RuntimeError("CompilerFunction does not have default arguments ")
 
     def _arg_values(self, **kwargs):
-        pass
+        print("in arg_values")
+        from IPython import embed; embed()
         # Add value override for own data if it is provided, otherwise
         # use defaults
         #if self.name in kwargs:
@@ -1526,7 +1515,8 @@ class CompilerFunction(DiscreteFunction):
         #return values
 
     def _arg_check(self, args, intervals):
-        pass
+        print("in arg_check")
+        from IPython import embed; embed()
         #if self.name not in args:
         #    raise InvalidArgument("No runtime value for `%s`" % self.name)
         #key = args[self.name]
