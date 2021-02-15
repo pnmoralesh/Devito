@@ -474,6 +474,22 @@ class TestCaching(object):
         # avoid circular references in the cache
         assert(len(_SymbolCache) == cache_size + 2)
 
+    def test_clear_cache_with_pointers(self, operate_on_empty_cache, nx=1000, ny=1000):
+        grid = Grid(shape=(nx, ny), dtype=np.float64)
+        cache_size = len(_SymbolCache)
+
+        u = Function(name='u', grid=grid, space_order=2)
+        # Both u and u(inds) added to cache
+        assert(len(_SymbolCache) == cache_size + 2)
+
+        d = Dimension(name='d')
+        assert(len(_SymbolCache) == cache_size + 4)
+
+        p = u._make_pointer(dimensions=d)
+        # Cache size won't change since Pointer isn't cached by devito to
+        # avoid circular references in the cache
+        assert(len(_SymbolCache) == cache_size + 4)
+
     def test_clear_cache_with_alive_symbols(self, operate_on_empty_cache,
                                             nx=1000, ny=1000):
         """
