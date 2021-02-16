@@ -739,9 +739,6 @@ def lower_schedule(cluster, schedule, chosen, sregistry, options):
     clusters = []
     subs = {}
     for alias, writeto, ispace, aliaseds, indicess in schedule:
-        if all(i not in chosen for i in aliaseds):
-            continue
-
         # Basic info to create the temporary that will hold the alias
         name = sregistry.make_name()
         dtype = cluster.dtype
