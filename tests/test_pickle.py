@@ -12,8 +12,8 @@ from devito.mpi.halo_scheme import Halo
 from devito.mpi.routines import (MPIStatusObject, MPIMsgEnriched, MPIRequestObject,
                                  MPIRegion)
 from devito.types import (Array, CustomDimension, Symbol as dSymbol, Scalar,
-                          Lock, PThreadArray, SharedData, Timer, DeviceID,
-                          CompilerFunction)
+                          PointerArray, Lock, PThreadArray, SharedData, Timer,
+			  DeviceID, CompilerFunction)
 from devito.symbolics import (IntDiv, ListInitializer, FieldFromPointer,
                               FunctionFromPointer, DefFunction)
 from examples.seismic import (demo_model, AcquisitionGeometry,
@@ -119,6 +119,15 @@ def test_array():
     assert new_a.padding == ((2, 2), (2, 2))
     assert new_a.space == 'remote'
     assert new_a.scope == 'stack'
+
+    # Now with a pointer array
+    pa = PointerArray(name='pa', dimensions=d, array=a)
+
+    pkl_pa = pickle.dumps(pa)
+    new_pa = pickle.loads(pkl_pa)
+    assert new_pa.name == pa.name
+    assert new_pa.dim.name == 'd'
+    assert new_pa.array.name == 'a'
 
 
 def test_sub_dimension():
@@ -446,7 +455,27 @@ def test_mpi_objects():
 
 
 def test_compilerfunction():
-    from IPython import embed; embed()
+    grid = Grid(shape=(3, 3))
+    d = Dimension(name='d')
+
+    cf = CompilerFunction(name='f', dtype=np.float64, dimensions=grid.dimensions,
+                          halo=((1, 1), (1, 1), (1, 1)))
+
+    pkl_cf = pickle.dumps(cf)
+    new_cf = pickle.loads(pkl_cf)
+    assert new_cf.name == cf.name
+    assert new_cf.dtype is np.float64
+    assert new_cf.halo == ((1, 1), (1, 1), (1, 1))
+    assert new_cf.ndim == cf.ndim
+    assert new_cf.dim is None
+
+    pcf = cf._make_pointer(d)
+
+    pkl_pcf = pickle.dumps(pcf)
+    new_pcf = pickle.loads(pkl_pcf)
+    assert new_pcf.name == pcf.name
+    assert new_pcf.dim.name == 'd'
+    assert new_pcf.ndim == cf.ndim + 1
 
 
 @skipif(['nompi'])

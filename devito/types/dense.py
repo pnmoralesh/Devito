@@ -1468,7 +1468,11 @@ class CompilerFunction(DiscreteFunction):
     @classmethod
     def __indices_setup__(cls, **kwargs):
         pointer_dim = kwargs.get('pointer_dim')
-        dimensions = as_tuple(pointer_dim) + as_tuple(kwargs['dimensions'])
+        dimensions = as_tuple(kwargs['dimensions'])
+        if pointer_dim not in dimensions:
+            # This is a bit hacky but it does work around duplicate dimensions when
+            # it gets to pickling
+            dimensions = as_tuple(pointer_dim) + dimensions
         return dimensions, dimensions
 
     def __halo_setup__(self, **kwargs):
