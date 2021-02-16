@@ -1121,7 +1121,7 @@ class IncrDimension(DerivedDimension):
                 # Avoid OOB (will end up here only in case of tiny iteration spaces)
                 return {name: 1}
 
-    def _arg_check(self, args, interval):
+    def _arg_check(self, args, *_args):
         try:
             name = self.step.name
         except AttributeError:
@@ -1234,7 +1234,7 @@ class CustomDimension(BasicDimension):
         else:
             return self._symbolic_size
 
-    def _arg_defaults(self):
+    def _arg_defaults(self, **kwargs):
         return {}
 
     def _arg_values(self, *args, **kwargs):
