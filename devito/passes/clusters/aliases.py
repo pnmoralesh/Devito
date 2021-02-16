@@ -97,7 +97,7 @@ def cire(cluster, mode, sregistry, options, platform):
             callbacks_mapper[mode](context, n, options)
 
         # Extract potentially aliasing expressions
-        exprs, extracted = extract(cluster, sregistry)
+        extracted = extract(cluster, sregistry)
         if not extracted:
             # Do not waste time
             continue
@@ -113,15 +113,15 @@ def cire(cluster, mode, sregistry, options, platform):
         aliases = collect(extracted, ignore_collected, options)
 
         # Rule out aliasing expressions with a bad flops/memory trade-off
-        aliases, chosen, others = choose(exprs, aliases, selector)
-        if not chosen:
+        aliases = choose(aliases, selector)
+        if not aliases:
             # Do not waste time
             continue
 
         # AliasMapper -> Schedule -> [Clusters]
         schedule = make_schedule(cluster, aliases, in_writeto, options)
         schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
-        clusters, subs = lower_schedule(cluster, schedule, chosen, sregistry, options)
+        clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
 
         # The [Clusters] must be ordered so as to reuse as many of the `cluster`'s
         # IterationIntervals as possible in order to honor the write-to region. This
@@ -130,7 +130,7 @@ def cire(cluster, mode, sregistry, options, platform):
         processed.sort(key=partial(cit, cluster))
 
         # Rebuild `cluster` so as to use the newly created aliases
-        cluster = rebuild(cluster, others, schedule, subs)
+        cluster = rebuild(cluster, schedule, subs)
 
         # Prepare for the next round
         context = flatten(c.exprs for c in processed) + list(cluster.exprs)
@@ -208,9 +208,7 @@ class CallbacksInvariants(Callbacks):
                     mapper[i] = symbol
                     extracted.append(e.func(symbol, i))
 
-        processed = [uxreplace(e, mapper) for e in cluster.exprs]
-
-        return extracted + processed, extracted
+        return extracted
 
     @classmethod
     def in_writeto(cls, max_par, dim, cluster):
@@ -285,11 +283,9 @@ class CallbacksSOPS(Callbacks):
                     mapper[i] = i.func(symbol, *others)
 
         if mapper:
-            extracted = [e.func(v, k) for k, (v, e) in extracted.items()]
-            processed = [uxreplace(e, mapper) for e in cluster.exprs]
-            return extracted + processed, extracted
+            return [e.func(v, k) for k, (v, e) in extracted.items()]
         else:
-            return cluster.exprs, []
+            return []
 
     @classmethod
     def ignore_collected(cls, group):
@@ -486,7 +482,7 @@ def collect(exprs, ignore_collected, options):
     return aliases
 
 
-def choose(exprs, aliases, selector):
+def choose(aliases, selector):
     """
     Use a cost model to select the aliases that are worth optimizing.
     """
@@ -494,8 +490,8 @@ def choose(exprs, aliases, selector):
     # exceeds the mode's threshold
     candidates = OrderedDict()
     others = []
-    for e in exprs:
-        naliases = len(aliases.get(e.rhs))
+    for e, v in aliases.items():
+        naliases = len(v.aliaseds)
         cost = estimate_cost(e, True)*naliases
         score = selector(cost)
         if score > 0:
@@ -508,21 +504,19 @@ def choose(exprs, aliases, selector):
     # is favorable
     owset = wset(others)
     retained = AliasMapper(aliases)
-    chosen = OrderedDict()
-    others = []
-    for e in exprs:
+    for e, v in aliases.items():
         try:
             score = candidates[e]
         except KeyError:
             score = 0
         if score > 1 or \
            score == 1 and max(len(wset(e)), 1) > len(wset(e) & owset):
-            chosen[e.rhs] = e.lhs
-        else:
-            others.append(e)
-            retained.remove(e.rhs)
+               # Chosen!
+               continue
 
-    return retained, chosen, others
+        retained.remove(e)
+
+    return retained
 
 
 def make_schedule(cluster, aliases, in_writeto, options):
@@ -724,7 +718,7 @@ def _optimize_schedule_padding(cluster, schedule, platform):
     return Schedule(*processed, dmapper=schedule.dmapper, rmapper=schedule.rmapper)
 
 
-def lower_schedule(cluster, schedule, chosen, sregistry, options):
+def lower_schedule(cluster, schedule, sregistry, options):
     """
     Turn a Schedule into a sequence of Clusters.
     """
@@ -786,13 +780,8 @@ def lower_schedule(cluster, schedule, chosen, sregistry, options):
             callback = lambda idx: obj
 
         # Create the substitution rules for the aliasing expressions
-        for aliased, indices in zip(aliaseds, indicess):
-            subs[aliased] = callback(indices)
-            if aliased in chosen:
-                subs[chosen[aliased]] = callback(indices)
-            else:
-                # Perhaps part of a composite alias ?
-                pass
+        subs.update({aliased: callback(indices)
+                     for aliased, indices in zip(aliaseds, indicess)})
 
         # Construct the `alias` DataSpace
         accesses = detect_accesses(expression)
@@ -815,12 +804,12 @@ def lower_schedule(cluster, schedule, chosen, sregistry, options):
     return clusters, subs
 
 
-def rebuild(cluster, others, schedule, subs):
+def rebuild(cluster, schedule, subs):
     """
     Plug the optimized aliases into the input Cluster. This leads to creating
     a new Cluster with suitable IterationSpace and DataSpace.
     """
-    exprs = [uxreplace(e, subs) for e in others]
+    exprs = [uxreplace(e, subs) for e in cluster.exprs]
 
     ispace = cluster.ispace.augment(schedule.dmapper)
     ispace = ispace.augment(schedule.rmapper)
