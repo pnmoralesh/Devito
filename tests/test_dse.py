@@ -1797,25 +1797,30 @@ class TestAliases(object):
         x, y, z = grid.dimensions
         t = grid.stepping_dim
 
-        f = Function(name='f', grid=grid)
-        u = TimeFunction(name='u', grid=grid, space_order=3)
-        u1 = TimeFunction(name="u1", grid=grid, space_order=3)
-
         nthreads = 2
         x0_blk0_size = 8
         y0_blk0_size = 8
 
+        f = Function(name='f', grid=grid)
+        u = TimeFunction(name='u', grid=grid, space_order=3)
+        u1 = TimeFunction(name="u", grid=grid, space_order=3)
+        u2 = TimeFunction(name="u", grid=grid, space_order=3)
+
         f.data_with_halo[:] = 1.
         u.data_with_halo[:] = 0.32
         u1.data_with_halo[:] = 0.32
+        u2.data_with_halo[:] = 0.32
 
-        # Leads to 3D aliases
         eqn = Eq(u.forward, ((u[t, x, y, z] + u[t, x+1, y+1, z+1])*3*f +
                              (u[t, x+2, y+2, z+2] + u[t, x+3, y+3, z+3])*3*f + 1))
 
         op0 = Operator(eqn, opt=('noop', {'openmp': True}))
         op1 = Operator(eqn, opt=('advanced', {'openmp': True, 'cire-mincost-sops': 1,
                                               'cire-ftemps': True}))
+        op2 = Operator(eqn, opt=('advanced-fsg', {'openmp': True, 'cire-mincost-sops': 1,
+                                                  'cire-ftemps': True}))
+
+        op0(time_M=1, nthreads=nthreads)
 
         # CompilerFunctions expect an override
         try:
@@ -1825,15 +1830,24 @@ class TestAliases(object):
         except:
             assert False
 
+        # Prepare to run op1
         cfuncs = [i for i in op1.input if i.is_CompilerFunction]
-
         shape = [nthreads, x0_blk0_size, y0_blk0_size, grid.shape[-1]]
         ofuncs = [i.make(shape) for i in cfuncs]
         kwargs = {i.name: i for i in ofuncs}
 
-        # Check numerical output
-        op0(time_M=1, nthreads=nthreads)
+        # Check numerical output of op1
         op1(time_M=1, u=u1, nthreads=nthreads, **kwargs)
+        assert np.allclose(u.data, u1.data, rtol=10e-8)
+
+        # Prepare to run op2
+        cfuncs = [i for i in op2.input if i.is_CompilerFunction]
+        ofuncs = [i.make(grid.shape) for i in cfuncs]
+        assert all(i.shape_with_halo == (32, 32, 32) for i in ofuncs)
+        kwargs = {i.name: i for i in ofuncs}
+
+        # Check numerical output of op2
+        op2(time_M=1, u=u2, **kwargs)
         assert np.allclose(u.data, u1.data, rtol=10e-8)
 
     @pytest.mark.parametrize('rotate', [False, True])
