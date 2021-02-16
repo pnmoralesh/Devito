@@ -121,10 +121,10 @@ class DataManager(object):
         Allocate the following objects in the high bandwidth memory:
 
             * The pointer array `obj`;
-            * The pointee Array `obj.pointee`
+            * The pointee Array `obj.array`
 
         If the pointer array is defined over `sregistry.threadid`, that is a thread
-        Dimension, then each `obj.pointee` slice is allocated and freed individually
+        Dimension, then each `obj.array` slice is allocated and freed individually
         by the owner thread.
         """
         # The pointer array
@@ -137,7 +137,7 @@ class DataManager(object):
 
         # The pointee Array
         pobj = '%s[%s]' % (obj.name, obj.dim.name)
-        shape = "".join("[%s]" % i for i in obj.pointee.symbolic_shape)
+        shape = "".join("[%s]" % i for i in obj.array.symbolic_shape)
         size = "sizeof(%s%s)" % (obj._C_typedata, shape)
         alloc1 = c.Statement(self.lang['alloc-host'](pobj, obj._data_alignment, size))
         free1 = c.Statement(self.lang['free-host'](pobj))
