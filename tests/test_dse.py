@@ -1817,13 +1817,6 @@ class TestAliases(object):
         op1 = Operator(eqn, opt=('advanced', {'openmp': True, 'cire-mincost-sops': 1,
                                               'cire-ftemps': True}))
 
-        # Check code generation
-        #xs, ys, zs = self.get_params(op1, 'x0_blk0_size', 'y0_blk0_size', 'z_size')
-        #arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
-        #assert len(arrays) == 1
-        #assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 1
-        #self.check_array(arrays[0], ((1, 1), (1, 1), (1, 1)), (xs+2, ys+2, zs+2), rotate)
-
         # CompilerFunctions expect an override
         try:
             op1(time_M=1, u=u1)

@@ -1544,21 +1544,5 @@ class CompilerFunction(DiscreteFunction):
         else:
             raise InvalidArgument("CompilerFunction `%s` lacks override" % self.name)
 
-    def _arg_check(self, args, intervals):
-        print("in arg_check")
-        from IPython import embed; embed()
-        #if self.name not in args:
-        #    raise InvalidArgument("No runtime value for `%s`" % self.name)
-        #key = args[self.name]
-        #if len(key.shape) != self.ndim:
-        #    raise InvalidArgument("Shape %s of runtime value `%s` does not match "
-        #                          "dimensions %s" %
-        #                          (key.shape, self.name, self.dimensions))
-        #if key.dtype != self.dtype:
-        #    warning("Data type %s of runtime value `%s` does not match the "
-        #            "Function data type %s" % (key.dtype, self.name, self.dtype))
-        #for i, s in zip(self.dimensions, key.shape):
-        #    i._arg_check(args, s, intervals[i])
-
     # Pickling support
     _pickle_kwargs = DiscreteFunction._pickle_kwargs + ['dimensions', 'pointer_dim']

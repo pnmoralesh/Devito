@@ -1121,7 +1121,7 @@ class IncrDimension(DerivedDimension):
                 # Avoid OOB (will end up here only in case of tiny iteration spaces)
                 return {name: 1}
 
-    def _arg_check(self, args, interval):
+    def _arg_check(self, args, *_args):
         try:
             name = self.step.name
         except AttributeError:
