@@ -514,7 +514,7 @@ def choose(aliases, selector):
                # Chosen!
                continue
 
-        retained.remove(e)
+        retained.pop(e)
 
     return retained
 
@@ -1060,12 +1060,6 @@ class AliasMapper(OrderedDict):
             if key in i.aliaseds:
                 return i.aliaseds
         return []
-
-    def remove(self, key):
-        for k, v in list(self.items()):
-            if key in v.aliaseds:
-                self.pop(k)
-                return
 
 
 # Utils
