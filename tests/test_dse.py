@@ -1591,8 +1591,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 6
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[0], ((3, 3),), (zs+6,))
-        self.check_array(arrays[1], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
+        self.check_array(arrays[4], ((3, 3),), (zs+6,))
+        self.check_array(arrays[5], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
 
         # Check numerical output
         op0(time_M=1)
@@ -1881,8 +1881,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 3
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[0], ((4, 4),), (zs+8,))  # On purpose w/o `rotate`
-        self.check_array(arrays[1], ((4, 4), (0, 0)), (ys+8, zs), rotate)
+        self.check_array(arrays[1], ((4, 4),), (zs+8,))  # On purpose w/o `rotate`
+        self.check_array(arrays[2], ((4, 4), (0, 0)), (ys+8, zs), rotate)
 
         # Check numerical output
         op0.apply(time_M=2)
