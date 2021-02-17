@@ -114,7 +114,7 @@ def cire(cluster, mode, sregistry, options, platform):
         aliases = collect(cluster, extracted, ignore_collected, options)
 
         # Rule out aliasing expressions with a bad flops/memory trade-off
-        aliases = choose(aliases, selector)
+        aliases = choose(aliases, templated, selector)
         if not aliases:
             # Do not waste time
             continue
@@ -482,7 +482,7 @@ def collect(cluster, extracted, ignore_collected, options):
     return aliases
 
 
-def choose(aliases, selector):
+def choose(aliases, templated, selector):
     """
     Use a cost model to select the aliases that are worth optimizing.
     """
@@ -502,7 +502,7 @@ def choose(aliases, selector):
     # Pass 2: a set of aliasing expressions is optimizable if and only if it survived
     # Pass 1 above *and* the tradeoff between operation count and working set increase
     # is favorable
-    owset = wset(others)
+    owset = wset(others + templated)
     retained = AliasMapper(aliases)
     for e, v in aliases.items():
         try:
