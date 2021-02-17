@@ -1649,16 +1649,16 @@ class TestAliases(object):
 
     @switchconfig(profiling='advanced')
     @pytest.mark.parametrize('expr,exp_arrays,exp_ops', [
-#        ('f.dx.dx + g.dx.dx',
-#         (1, 1, 2, (1, 0)), (46, 40, 49, 17)),
-#        ('v.dx.dx + p.dx.dx',
-#         (2, 2, 2, (0, 2)), (61, 49, 49, 25)),
+        ('f.dx.dx + g.dx.dx',
+         (1, 1, 2, (1, 0)), (46, 40, 49, 17)),
+        ('v.dx.dx + p.dx.dx',
+         (2, 2, 2, (0, 2)), (61, 49, 49, 25)),
         ('(v.dx + v.dy).dx - (v.dx + v.dy).dy + 2*f.dx.dx + f*f.dy.dy + f.dx.dx(x0=1)',
-         (3, 3, 4, (0, 3)), (217, 199, 208, 94)),
-#        ('(g*(1 + f)*v.dx).dx + (2*g*f*v.dx).dx',
-#         (1, 1, 2, (0, 1)), (50, 44, 53, 19)),
-#        ('g*(f.dx.dx + g.dx.dx)',
-#         (1, 1, 2, (1, 0)), (47, 41, 50, (17, 1))),
+         (3, 3, 4, (0, 3)), (217, 199, 208, 76)),
+        ('(g*(1 + f)*v.dx).dx + (2*g*f*v.dx).dx',
+         (1, 1, 2, (0, 1)), (50, 44, 53, 19)),
+        ('g*(f.dx.dx + g.dx.dx)',
+         (1, 1, 2, (1, 0)), (47, 41, 50, (17, 1))),
     ])
     def test_sum_of_nested_derivatives(self, expr, exp_arrays, exp_ops):
         """
@@ -1700,18 +1700,17 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op4._func_table['bf0']) if i.is_Array]
         exp_inv, exp_sops = exp_arrays[3]
         assert len(arrays) == exp_inv + exp_sops
-        from IPython import embed; embed()
         assert len(FindNodes(VExpanded).visit(op4._func_table['bf0'])) == exp_sops
 
         # Check numerical output
-        op0(time_M=1)
+        op0(time_M=20)
         exp_v = norm(v)
         for n, op in enumerate([op1, op2, op3, op4]):
             v1 = TimeFunction(name="v", grid=grid, space_order=4)
             v1.data_with_halo[:] = 1.2
 
-            summary = op(time_M=1, v=v1)
-            assert np.isclose(exp_v, norm(v1), atol=1e-11, rtol=1e-8)
+            summary = op(time_M=20, v=v1)
+            assert np.isclose(exp_v, norm(v1), atol=1e-11, rtol=1e-6)
 
             # Also check against expected operation count to make sure
             # all redundancies have been detected correctly
