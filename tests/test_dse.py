@@ -10,7 +10,7 @@ from devito import (NODE, Eq, Inc, Constant, Function, TimeFunction, SparseTimeF
                     transpose)
 from devito.exceptions import InvalidArgument, InvalidOperator
 from devito.finite_differences.differentiable import diffify
-from devito.ir import (DummyEq, Expression, Iteration, FindNodes, FindSymbols,
+from devito.ir import (Cluster, DummyEq, Expression, Iteration, FindNodes, FindSymbols,
                        ParallelIteration, retrieve_iteration_tree)
 from devito.passes.clusters.aliases import collect
 from devito.passes.clusters.cse import _cse
@@ -427,7 +427,10 @@ class TestAliases(object):
         for i, e in enumerate(list(expected)):
             expected[i] = eval(e)
 
-        aliases = collect(exprs, lambda i: False, {'min-storage': False})
+        cluster = Cluster(exprs, exprs[0].ispace, exprs[0].dspace)
+        extracted = {i.rhs: i.lhs for i in exprs}
+
+        aliases = collect(cluster, extracted, lambda i: False, {'min-storage': False})
 
         assert len(aliases) == len(expected)
         assert all(i in expected for i in aliases)
