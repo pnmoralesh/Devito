@@ -2017,8 +2017,8 @@ class TestTTI(object):
         assert np.allclose(self.tti_noopt[1].data, rec.data, atol=10e-1)
 
         # Check expected opcount/oi
-        assert summary[('section1', None)].ops == 102
-        assert np.isclose(summary[('section1', None)].oi, 1.610, atol=0.001)
+        assert summary[('section1', None)].ops == 103
+        assert np.isclose(summary[('section1', None)].oi, 1.625, atol=0.001)
 
         # With optimizations enabled, there should be exactly four IncrDimensions
         op = wavesolver.op_fwd(kernel='centered')
@@ -2076,7 +2076,7 @@ class TestTTIv2(object):
 
     @switchconfig(profiling='advanced')
     @pytest.mark.parametrize('space_order,expected', [
-        (4, 203), (12, 395)
+        (4, 211), (12, 419)
     ])
     def test_opcounts(self, space_order, expected):
         grid = Grid(shape=(3, 3, 3))
