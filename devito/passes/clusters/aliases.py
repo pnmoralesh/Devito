@@ -1,6 +1,6 @@
 from collections import OrderedDict, defaultdict, namedtuple
 from functools import partial
-from itertools import groupby
+from itertools import groupby, product
 
 from cached_property import cached_property
 import numpy as np
@@ -101,14 +101,6 @@ def cire(cluster, mode, sregistry, options, platform):
             # Do not waste time
             continue
 
-        # There can't be Dimension-dependent data dependences with any of
-        # the `processed` Clusters, otherwise we would risk either OOB accesses
-        # or reading from garbage uncomputed halo
-        aaa = [cluster.exprs[0].func(v, k) for k, v in extracted.items()]  #TODO: DROP
-        scope = Scope(exprs=flatten(c.exprs for c in processed) + aaa)
-        if not all(i.is_indep() for i in scope.d_all_gen()):
-            break
-
         # Search aliasing expressions
         aliases = collect(cluster, extracted, ignore_collected, options)
 
@@ -122,6 +114,11 @@ def cire(cluster, mode, sregistry, options, platform):
         schedule = make_schedule(cluster, aliases, in_writeto, options)
         schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
         clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
+
+        # Sanity check: by construction, none of the new clusters may depend on
+        # previously processed clusters
+        assert not any(set(c0.scope.writes) & set(c1.scope.reads)
+                       for c0, c1 in product(processed, clusters))
 
         # Rebuild `cluster` so as to use the newly created aliases
         cluster = rebuild(cluster, templated, extracted, subs, schedule)
