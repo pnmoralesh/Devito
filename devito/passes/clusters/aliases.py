@@ -81,12 +81,7 @@ def cire(cluster, mode, sregistry, options, platform):
     t0 = 2.0*t2[x,y,z]
     t1 = 3.0*t2[x,y,z+1]
     """
-    # Relevant options
-    repeats = options['cire-repeats']
-
-    # Sanity checks
     assert mode in list(callbacks_mapper)
-    assert all(i >= 0 for i in repeats.values())
 
     # Get the callbacks
     nrepeats, extract, ignore_collected, in_writeto, selector =\
