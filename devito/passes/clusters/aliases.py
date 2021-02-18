@@ -124,18 +124,17 @@ def cire(cluster, mode, sregistry, options, platform):
         schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
         clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
 
-        # The [Clusters] must be ordered so as to reuse as many of the `cluster`'s
-        # IterationIntervals as possible in order to honor the write-to region. This
-        # also guarantees that fusion is maximum
-        processed.extend(clusters)
-        processed.sort(key=partial(cit, cluster))
-
         # Rebuild `cluster` so as to use the newly created aliases
         cluster = rebuild(cluster, templated, extracted, subs, schedule)
 
         # Prepare for the next round
+        processed.extend(clusters)
         context = flatten(c.exprs for c in processed) + list(cluster.exprs)
 
+    # The [Clusters] must be ordered so as to reuse as many of the `cluster`'s
+    # IterationIntervals as possible in order to honor the write-to region. This
+    # also guarantees that fusion is maximum
+    processed.sort(key=partial(cit, cluster))
     processed.append(cluster)
 
     return processed
