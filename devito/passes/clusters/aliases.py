@@ -88,16 +88,15 @@ def cire(cluster, mode, sregistry, options, platform):
     assert mode in list(callbacks_mapper)
     assert all(i >= 0 for i in repeats.values())
 
+    # Get the callbacks
+    nrepeats, extract, ignore_collected, in_writeto, selector =\
+        callbacks_mapper[mode](cluster, options)
+
     # The main CIRE loop
     processed = []
-    context = cluster.exprs
-    for n in reversed(range(repeats.get(mode, 1))):
-        # Get the callbacks
-        extract, ignore_collected, in_writeto, selector =\
-            callbacks_mapper[mode](context, n, options)
-
+    for n in reversed(range(nrepeats)):
         # Extract potentially aliasing expressions
-        templated, extracted = extract(cluster, sregistry)
+        templated, extracted = extract(cluster, n, sregistry)
         if not extracted:
             # Do not waste time
             continue
@@ -129,7 +128,6 @@ def cire(cluster, mode, sregistry, options, platform):
 
         # Prepare for the next round
         processed.extend(clusters)
-        context = flatten(c.exprs for c in processed) + list(cluster.exprs)
 
     # The [Clusters] must be ordered so as to reuse as many of the `cluster`'s
     # IterationIntervals as possible in order to honor the write-to region. This
@@ -149,22 +147,23 @@ class Callbacks(object):
 
     mode = None
 
-    def __new__(cls, context, n, options):
-        min_cost = options['cire-mincost']
+    def __new__(cls, cluster, options):
+        min_cost = options['cire-mincost'].get(cls.mode)
         max_par = options['cire-maxpar']
         max_alias = options['cire-maxalias']
 
-        min_cost = min_cost.get(cls.mode)
-        if callable(min_cost):
-            min_cost = min_cost(n)
-
-        return (partial(cls.extract, n, context, min_cost, max_alias),
+        return (cls.nrepeats(cluster),
+                partial(cls.extract, min_cost, max_alias),
                 cls.ignore_collected,
                 partial(cls.in_writeto, max_par),
                 partial(cls.selector, min_cost))
 
     @classmethod
-    def extract(cls, n, context, min_cost, max_alias, cluster, sregistry):
+    def nrepeats(cls, cluster):
+        return 1
+
+    @classmethod
+    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
         raise NotImplementedError
 
     @classmethod
@@ -185,19 +184,22 @@ class CallbacksInvariants(Callbacks):
     mode = 'invariants'
 
     @classmethod
-    def _extract_rule(cls, context, min_cost, cluster):
+    def _extract_rule(cls, cluster, min_cost):
+        #TODO: exclude is broken... consider:
+        #a[x, y] = ...
+        #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
         exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
         rule0 = lambda e: not e.free_symbols & exclude
-        rule1 = make_is_time_invariant(context)
+        rule1 = make_is_time_invariant(cluster.exprs)
         rule2 = lambda e: estimate_cost(e, True) >= min_cost
 
         return lambda e: rule0(e) and rule1(e) and rule2(e)
 
     @classmethod
-    def extract(cls, n, context, min_cost, max_alias, cluster, sregistry):
+    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
         make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
 
-        rule = cls._extract_rule(context, min_cost, cluster)
+        rule = cls._extract_rule(cluster, min_cost)
 
         extracted = OrderedDict()
         for e in cluster.exprs:
@@ -219,7 +221,7 @@ class CallbacksDivs(CallbacksInvariants):
     mode = 'divs'
 
     @classmethod
-    def _extract_rule(cls, context, min_cost, cluster):
+    def _extract_rule(cls, *args):
         return lambda e: (e.is_Pow and e.exp.is_Integer and e.exp < 0 and
                           all(i.function.is_const for i in e.base.free_symbols))
 
@@ -233,7 +235,11 @@ class CallbacksSOPS(Callbacks):
     mode = 'sops'
 
     @classmethod
-    def extract(cls, n, context, min_cost, max_alias, cluster, sregistry):
+    def nrepeats(cls, cluster):
+        return 7  #TODO: AUTOMATE ME!
+
+    @classmethod
+    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
         make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
 
         # The `depth` determines "how big" the extracted sum-of-products will be.
@@ -244,6 +250,9 @@ class CallbacksSOPS(Callbacks):
         # muls in the latter case, we need `depth=2`
         depth = n
 
+        #TODO: exclude is broken... consider:
+        #a[x, y] = ...
+        #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
         exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = lambda e: e.is_Mul and q_terminalop(e, depth)
