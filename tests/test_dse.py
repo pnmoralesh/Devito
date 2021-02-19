@@ -692,8 +692,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 2
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[0], ((1, 1), (0, 0)), (ys+2, zs), rotate)
-        self.check_array(arrays[1], ((1, 0), (1, 0), (0, 0)), (xs+1, ys+1, zs), rotate)
+        self.check_array(arrays[0], ((1, 0), (1, 0), (0, 0)), (xs+1, ys+1, zs), rotate)
+        self.check_array(arrays[1], ((1, 1), (0, 0)), (ys+2, zs), rotate)
 
         # Check numerical output
         op0(time_M=1)
@@ -729,8 +729,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1) if i.is_Array]
         assert len(arrays) == 2
         assert len(FindNodes(VExpanded).visit(op1)) == 1
-        self.check_array(arrays[1], ((2, 2), (0, 0), (0, 0)), (xs+4, ys, zs))
-        self.check_array(arrays[0], ((2, 2), (0, 0)), (ys+4, zs))
+        self.check_array(arrays[0], ((2, 2), (0, 0), (0, 0)), (xs+4, ys, zs))
+        self.check_array(arrays[1], ((2, 2), (0, 0)), (ys+4, zs))
 
         # Check that `advanced-fsg` + `min-storage` is incompatible
         try:
@@ -816,8 +816,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 2
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[0], ((1, 1), (1, 0)), (ys+2, zs+1), rotate)
-        self.check_array(arrays[1], ((1, 0), (1, 0), (0, 0)), (xs+1, ys+1, zs), rotate)
+        self.check_array(arrays[0], ((1, 0), (1, 0), (0, 0)), (xs+1, ys+1, zs), rotate)
+        self.check_array(arrays[1], ((1, 1), (1, 0)), (ys+2, zs+1), rotate)
 
         # Check numerical output
         op0(time_M=1)
@@ -1608,8 +1608,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 6
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[4], ((3, 3),), (zs+6,))
-        self.check_array(arrays[5], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
+        self.check_array(arrays[4], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
+        self.check_array(arrays[5], ((3, 3),), (zs+6,))
 
         # Check numerical output
         op0(time_M=1)
@@ -1756,8 +1756,6 @@ class TestAliases(object):
 
         # Check code generation
         assert len([i for i in FindSymbols().visit(op._func_table['bf0']) if i.is_Array])
-
-
 
     @pytest.mark.parametrize('rotate', [False, True])
     def test_maxpar_option(self, rotate):
@@ -1923,8 +1921,8 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
         assert len(arrays) == 3
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[1], ((4, 4),), (zs+8,))  # On purpose w/o `rotate`
-        self.check_array(arrays[2], ((4, 4), (0, 0)), (ys+8, zs), rotate)
+        self.check_array(arrays[1], ((4, 4), (0, 0)), (ys+8, zs), rotate)
+        self.check_array(arrays[2], ((4, 4),), (zs+8,))  # On purpose w/o `rotate`
 
         # Check numerical output
         op0.apply(time_M=2)

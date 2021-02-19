@@ -127,13 +127,7 @@ def _cire(cluster, mode, sregistry, options, platform):
     # Rebuild `cluster` so as to use the newly created aliases
     cluster = rebuild(cluster, exprs, subs, schedule)
 
-    # The [Clusters] must be ordered so as to reuse as many of the `cluster`'s
-    # IterationIntervals as possible in order to honor the write-to region. This
-    # also guarantees that fusion is maximum
-    clusters.sort(key=partial(cit, cluster))  #TODO???? MOVE????
-    clusters.append(cluster)
-
-    return clusters
+    return clusters + [cluster]
 
 
 class Callbacks(object):
@@ -594,8 +588,11 @@ def make_schedule(cluster, aliases, in_writeto, options):
 
         processed.append(ScheduledAlias(alias, writeto, ispace, v.aliaseds, indicess))
 
-    # Sort by write-to region for deterministic code generation
-    processed = sorted(processed, key=lambda i: i.writeto)
+    # The [ScheduledAliases] must be ordered so as to reuse as many of the
+    # `cluster`'s IterationIntervals as possible in order to honor the
+    # write-to region. Another fundamental reason for ordering is to ensure
+    # deterministic code generation
+    processed = sorted(processed, key=lambda i: cit(cluster.ispace, i.ispace))
 
     return Schedule(*processed, dmapper=dmapper)
 
@@ -1039,6 +1036,17 @@ class AliasMapper(OrderedDict):
         assert len(aliaseds) == len(distances)
         self[alias] = AliasedGroup(intervals, aliaseds, distances)
 
+    def update(self, aliases):
+        for k, v in aliases.items():
+            try:
+                v0 = self[k]
+                if v0.intervals != v.intervals:
+                    raise ValueError
+                v0.aliaseds.extend(v.aliaseds)
+                v0.distances.extend(v.distances)
+            except KeyError:
+                self[k] = v
+
     @property
     def aliaseds(self):
         return flatten(i.aliaseds for i in self.values())
@@ -1063,12 +1071,12 @@ def make_rotations_table(d, v):
     return m
 
 
-def cit(c0, c1):
+def cit(ispace0, ispace1):
     """
-    The Common IterationIntervals of two given Clusters.
+    The Common IterationIntervals of two IterationSpaces.
     """
     found = []
-    for it0, it1 in zip(c0.itintervals, c1.itintervals):
+    for it0, it1 in zip(ispace0.itintervals, ispace1.itintervals):
         if it0 == it1:
             found.append(it0)
         else:
