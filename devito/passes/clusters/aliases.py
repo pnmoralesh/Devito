@@ -10,8 +10,8 @@ from devito.ir import (SEQUENTIAL, PARALLEL, PARALLEL_IF_PVT, ROUNDABLE, DataSpa
                        IntervalGroup, LabeledVector, Scope, detect_accesses,
                        build_intervals, normalize_properties)
 from devito.passes.clusters.utils import cluster_pass, make_is_time_invariant
-from devito.symbolics import (compare_ops, estimate_cost, q_constant, q_terminalop,
-                              retrieve_indexed, search, uxreplace)
+from devito.symbolics import (compare_ops, estimate_cost, q_constant, q_leaf,
+                              q_terminalop, retrieve_indexed, search, uxreplace)
 from devito.tools import as_tuple, flatten, split
 from devito.types import (Array, TempFunction, Eq, Scalar, ModuloDimension,
                           CustomDimension, IncrDimension)
@@ -228,18 +228,14 @@ class CallbacksSOPS(Callbacks):
 
     @classmethod
     def nrepeats(cls, cluster):
-        return 7  #TODO: AUTOMATE ME!
+        # The `nrepeats` is calculated such that we analyze all potential derivatives
+        # in `cluster`
+        return potential_max_deriv_order(cluster.exprs)
 
     @classmethod
     def extract(cls, min_cost, max_alias, cluster, n, sregistry):
         make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
 
-        # The `depth` determines "how big" the extracted sum-of-products will be.
-        # We observe that in typical FD codes:
-        #   add(mul, mul, ...) -> stems from first order derivative
-        #   add(mul(add(mul, mul, ...), ...), ...) -> stems from second order derivative
-        # To search the muls in the former case, we need `depth=0`; to search the outer
-        # muls in the latter case, we need `depth=2`
         depth = n
 
         #TODO: exclude is broken... consider:
@@ -249,6 +245,7 @@ class CallbacksSOPS(Callbacks):
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = lambda e: e.is_Mul and q_terminalop(e, depth)
         rule = lambda e: rule0(e) and rule1(e)
+        from IPython import embed; embed()
 
         mapper = {}
         extracted = OrderedDict()
@@ -1098,3 +1095,19 @@ def wset(exprs):
     """
     return {i.function for i in flatten([e.free_symbols for e in as_tuple(exprs)])
             if i.function.is_AbstractFunction}
+
+
+def potential_max_deriv_order(exprs):
+    """
+    The maximum FD derivative order in a list of expressions.
+    """
+    # NOTE: e might propagate the Derivative(...) information down from the
+    # symbolic language, but users may do crazy things and write their own custom
+    # expansions "by hand" (i.e., not resorting to Derivative(...)), hence instead
+    # of looking for Derivative(...) we use the following heuristic:
+    #   add(mul, mul, ...) -> stems from first order derivative
+    #   add(mul(add(mul, mul, ...), ...), ...) -> stems from second order derivative
+    #   ...
+    nadds = lambda e: (int(e.is_Add) +
+                       max([nadds(a) for a in e.args], default=0) if not q_leaf(e) else 0)
+    return max([nadds(e) for e in exprs], default=0)
