@@ -10,7 +10,7 @@ from devito import (NODE, Eq, Inc, Constant, Function, TimeFunction, SparseTimeF
                     transpose)
 from devito.exceptions import InvalidArgument, InvalidOperator
 from devito.finite_differences.differentiable import diffify
-from devito.ir import (Cluster, DummyEq, Expression, Iteration, FindNodes, FindSymbols,
+from devito.ir import (DummyEq, Expression, Iteration, FindNodes, FindSymbols,
                        ParallelIteration, retrieve_iteration_tree)
 from devito.passes.clusters.aliases import collect
 from devito.passes.clusters.cse import _cse
@@ -427,10 +427,10 @@ class TestAliases(object):
         for i, e in enumerate(list(expected)):
             expected[i] = eval(e)
 
-        cluster = Cluster(exprs, exprs[0].ispace, exprs[0].dspace)
         extracted = {i.rhs: i.lhs for i in exprs}
+        ispace = exprs[0].ispace
 
-        aliases = collect(cluster, extracted, lambda i: False, {'min-storage': False})
+        aliases = collect(extracted, ispace, lambda i: False, {'min-storage': False})
 
         assert len(aliases) == len(expected)
         assert all(i in expected for i in aliases)
@@ -1733,6 +1733,34 @@ class TestAliases(object):
             # all redundancies have been detected correctly
             for i, exp in enumerate(as_tuple(exp_ops[n])):
                 assert summary[('section%d' % i, None)].ops == exp
+
+    def test_derivatives_from_different_levels(self):
+        """
+        Test catching of derivatives nested at different levels of the
+        expression tree.
+        """
+        grid = Grid(shape=(10, 10, 10))
+
+        f = Function(name='f', grid=grid, space_order=4)
+        v = TimeFunction(name="v", grid=grid, space_order=4)
+        v1 = TimeFunction(name="v", grid=grid, space_order=4)
+
+        f.data_with_halo[:] = 0.5
+        v.data_with_halo[:] = 1.2
+        v1.data_with_halo[:] = 1.2
+
+        eqn = Eq(v.forward, f*(1 + v).dx + 2*f*((1 + v).dx + f))
+
+        #op0 = Operator(eqn, opt=('noop', {'openmp': True}))
+        op1 = Operator(eqn, opt=('advanced', {'openmp': True, 'cire-mincost-sops': 3}))
+        from IPython import embed; embed()
+
+        # Check code generation
+        arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
+        assert len(arrays) == 1
+        assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 1
+
+
 
     @pytest.mark.parametrize('rotate', [False, True])
     def test_maxpar_option(self, rotate):
