@@ -964,6 +964,22 @@ class TestAliases(object):
         op1(time_M=1, u=u1)
         assert np.all(u.data == u1.data)
 
+    def test_repeats_calculation(self):
+        """
+        Check that CIRE is able to automatically determine the nrepeats value
+        in the case of mode=sops.
+        """
+        grid = Grid(shape=(4, 4, 4))
+
+        f = Function(name='f', grid=grid)
+        u = TimeFunction(name='u', grid=grid, space_order=2)
+
+        eq = Eq(u.forward, f**2*sin(f)*u.dy.dy.dy.dy.dy)
+
+        op = Operator(eq, opt=('cire-sops'))
+
+        from IPython import embed; embed()
+
     def test_composite(self):
         """
         Check that composite alias are optimized away through "smaller" aliases.
