@@ -83,15 +83,25 @@ def cire(cluster, mode, sregistry, options, platform):
     """
     assert mode in list(callbacks_mapper)
 
+    #TODO: building SpacePoint...
+    return _cire(cluster, mode, sregistry, options, platform)
+
+
+def _cire(cluster, mode, sregistry, options, platform):
+    #TODO: exclude is broken... consider:
+    #a[x, y] = ...
+    #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
+    exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
+
     # Get the callbacks
     nrepeats, extract, ignore_collected, in_writeto, selector =\
-        callbacks_mapper[mode](cluster, options)
+        callbacks_mapper[mode](cluster, sregistry, options)
 
     # The main CIRE loop
     processed = []
-    for n in reversed(range(nrepeats)):
+    for n in range(nrepeats):
         # Extract potentially aliasing expressions
-        templated, extracted = extract(cluster, n, sregistry)
+        templated, extracted = extract(cluster.exprs, exclude, n)  #TODO: cluster.exprs
         if not extracted:
             # Do not waste time
             continue
@@ -139,13 +149,15 @@ class Callbacks(object):
 
     mode = None
 
-    def __new__(cls, cluster, options):
+    def __new__(cls, cluster, sregistry, options):
         min_cost = options['cire-mincost'].get(cls.mode)
         max_par = options['cire-maxpar']
         max_alias = options['cire-maxalias']
 
+        make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
+
         return (cls.nrepeats(cluster),
-                partial(cls.extract, min_cost, max_alias),
+                partial(cls.extract, min_cost, max_alias, make),
                 cls.ignore_collected,
                 partial(cls.in_writeto, max_par),
                 partial(cls.selector, min_cost))
@@ -155,7 +167,7 @@ class Callbacks(object):
         return 1
 
     @classmethod
-    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
+    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
         raise NotImplementedError
 
     @classmethod
@@ -176,30 +188,27 @@ class CallbacksInvariants(Callbacks):
     mode = 'invariants'
 
     @classmethod
-    def _extract_rule(cls, cluster, min_cost):
+    def _extract_rule(cls, exprs, exclude, min_cost):
         #TODO: exclude is broken... consider:
         #a[x, y] = ...
         #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
-        exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
         rule0 = lambda e: not e.free_symbols & exclude
-        rule1 = make_is_time_invariant(cluster.exprs)
+        rule1 = make_is_time_invariant(exprs)
         rule2 = lambda e: estimate_cost(e, True) >= min_cost
 
         return lambda e: rule0(e) and rule1(e) and rule2(e)
 
     @classmethod
-    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
-        make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
-
-        rule = cls._extract_rule(cluster, min_cost)
+    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
+        rule = cls._extract_rule(exprs, exclude, min_cost)
 
         extracted = OrderedDict()
-        for e in cluster.exprs:
+        for e in exprs:
             for i in search(e, rule, 'all', 'dfs_first_hit'):
                 if i not in extracted:
                     extracted[i] = make()
 
-        templated = [uxreplace(e, extracted) for e in cluster.exprs]
+        templated = [uxreplace(e, extracted) for e in exprs]
 
         return templated, extracted
 
@@ -233,24 +242,15 @@ class CallbacksSOPS(Callbacks):
         return potential_max_deriv_order(cluster.exprs)
 
     @classmethod
-    def extract(cls, min_cost, max_alias, cluster, n, sregistry):
-        make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
-
-        depth = n
-
-        #TODO: exclude is broken... consider:
-        #a[x, y] = ...
-        #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
-        exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
+    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
+        #TODO.... -> apply_constraint ?
         rule0 = lambda e: not e.free_symbols & exclude
-        rule1 = lambda e: e.is_Mul and q_terminalop(e, depth)
-        rule = lambda e: rule0(e) and rule1(e)
-        from IPython import embed; embed()
+        rule = lambda e: rule0(e)
 
         mapper = {}
         extracted = OrderedDict()
-        for e in cluster.exprs:
-            for i in search(e, rule, 'all', 'bfs_first_hit'):
+        for e in exprs:
+            for i in search_potential_deriv(e, n):
                 if i in mapper:
                     continue
 
@@ -280,10 +280,10 @@ class CallbacksSOPS(Callbacks):
                     mapper[i] = i.func(symbol, *others)
 
         if mapper:
-            templated = [uxreplace(e, mapper) for e in cluster.exprs]
+            templated = [uxreplace(e, mapper) for e in exprs]
             return templated, extracted
         else:
-            return cluster.exprs, {}
+            return exprs, {}
 
     @classmethod
     def ignore_collected(cls, group):
@@ -1111,3 +1111,19 @@ def potential_max_deriv_order(exprs):
     nadds = lambda e: (int(e.is_Add) +
                        max([nadds(a) for a in e.args], default=0) if not q_leaf(e) else 0)
     return max([nadds(e) for e in exprs], default=0)
+
+
+def search_potential_deriv(expr, n, c=0):
+    """
+    Retrieve the expressions at depth `n` that potentially stem from FD derivatives.
+    """
+    assert n >= c >= 0
+    if q_leaf(expr) or expr.is_Pow:
+        return []
+    elif expr.is_Mul:
+        if c == n:
+            return [expr]
+        else:
+            return flatten([search_potential_deriv(a, n, c+1) for a in expr.args])
+    else:
+        return flatten([search_potential_deriv(a, n, c) for a in expr.args])

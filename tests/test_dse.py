@@ -964,10 +964,10 @@ class TestAliases(object):
         op1(time_M=1, u=u1)
         assert np.all(u.data == u1.data)
 
-    def test_repeats_calculation(self):
+    def test_take_largest_derivative(self):
         """
-        Check that CIRE is able to automatically determine the nrepeats value
-        in the case of mode=sops.
+        Check that CIRE is able to automatically schedule the largest degree
+        derivative in a case with many nested derivatives.
         """
         grid = Grid(shape=(4, 4, 4))
 
@@ -978,7 +978,8 @@ class TestAliases(object):
 
         op = Operator(eq, opt=('cire-sops'))
 
-        from IPython import embed; embed()
+        assert op._profiler._sections['section0'].sops == 84
+        assert len([i for i in FindSymbols().visit(op) if i.is_Array]) == 1
 
     def test_composite(self):
         """
