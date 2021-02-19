@@ -1734,6 +1734,7 @@ class TestAliases(object):
             for i, exp in enumerate(as_tuple(exp_ops[n])):
                 assert summary[('section%d' % i, None)].ops == exp
 
+    @pytest.mark.xfail(reason="Cannot deal with multi-level aliases yet")
     def test_derivatives_from_different_levels(self):
         """
         Test catching of derivatives nested at different levels of the
@@ -1751,14 +1752,10 @@ class TestAliases(object):
 
         eqn = Eq(v.forward, f*(1 + v).dx + 2*f*((1 + v).dx + f))
 
-        #op0 = Operator(eqn, opt=('noop', {'openmp': True}))
-        op1 = Operator(eqn, opt=('advanced', {'openmp': True, 'cire-mincost-sops': 3}))
-        from IPython import embed; embed()
+        op = Operator(eqn, opt=('advanced', {'cire-mincost-sops': 3}))
 
         # Check code generation
-        arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
-        assert len(arrays) == 1
-        assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 1
+        assert len([i for i in FindSymbols().visit(op._func_table['bf0']) if i.is_Array])
 
 
 

@@ -101,8 +101,6 @@ def _cire(cluster, mode, sregistry, options, platform):
     aliases = AliasMapper()
     exprs = cluster.exprs
     ispace = cluster.ispace
-    if mode == 'sops' and 'u[t' in str(cluster):
-        from IPython import embed; embed()
     for n in range(nrepeats):
         # Extract potentially aliasing expressions
         processed, extracted = extract(exprs, exclude, n)
