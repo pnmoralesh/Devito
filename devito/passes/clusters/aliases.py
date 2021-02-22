@@ -110,8 +110,8 @@ def _cire(cluster, mode, sregistry, options, platform):
         if not found:
             continue
 
-        # Rule out aliasing expressions with a bad flops/memory trade-off
-        exprs, chosen = choose(found, exprs, mapper, selector)
+        # Process the aliasing expressions with a good flops/memory trade-off
+        exprs, chosen = process(found, exprs, mapper, selector)
         aliases.update(chosen)
 
     # AliasMapper -> Schedule -> [Clusters]
@@ -455,11 +455,13 @@ def collect(extracted, ispace, ignore_collected, options):
     return aliases
 
 
-def choose(aliases, exprs, mapper, selector):
+def process(aliases, exprs, mapper, selector):
     """
-    Use a cost model to select the aliases that are worth optimizing.
+    Analyze the detected aliases and, after applying a cost model to rule out
+    those aliases with a bad flops/memory trade-off, inject them into the original
+    expressions.
     """
-    # Pass 1: a set of aliasing expressions is optimizable only if its cost
+    # Pass 1: a set of aliasing expressions is retained only if its cost
     # exceeds the mode's threshold
     candidates = OrderedDict()
     aliaseds = []
@@ -474,14 +476,13 @@ def choose(aliases, exprs, mapper, selector):
         else:
             others.append(e)
 
-    # Project the candidate aliases into exprs such that we can determine what
-    # the new working set would be
+    # Project the candidate aliases into exprs to determine what the new
+    # working set would be
     mapper = {k: v for k, v in mapper.items() if v.free_symbols & set(aliaseds)}
     templated = [uxreplace(e, mapper) for e in exprs]
 
-    # Pass 2: a set of aliasing expressions is optimizable if and only if it survived
-    # Pass 1 above *and* the tradeoff between operation count and working set increase
-    # is favorable
+    # Pass 2: a set of aliasing expressions is retained only if the tradeoff
+    # between operation count reduction and working set increase is favorable
     owset = wset(others + templated)
     retained = AliasMapper()
     for e, v in aliases.items():
@@ -491,7 +492,6 @@ def choose(aliases, exprs, mapper, selector):
             score = 0
         if score > 1 or \
            score == 1 and max(len(wset(e)), 1) > len(wset(e) & owset):
-               # Chosen!
                retained[e] = v
 
     # Substitute the chosen aliasing sub-expressions
