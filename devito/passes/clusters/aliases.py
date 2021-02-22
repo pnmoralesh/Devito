@@ -179,9 +179,6 @@ class CallbacksInvariants(Callbacks):
 
     @classmethod
     def _extract_rule(cls, exprs, exclude, min_cost):
-        #TODO: exclude is broken... consider:
-        #a[x, y] = ...
-        #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = make_is_time_invariant(exprs)
         rule2 = lambda e: estimate_cost(e, True) >= min_cost
@@ -194,7 +191,7 @@ class CallbacksInvariants(Callbacks):
 
         extracted = OrderedDict()
         for e in exprs:
-            for i in search(e, rule, 'all', 'dfs_first_hit'):
+            for i in search(e, rule, 'all', 'dfs_first_hit'):  #TODO: BFS!
                 if i not in extracted:
                     extracted[i] = make()
 
