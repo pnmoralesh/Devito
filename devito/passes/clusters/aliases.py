@@ -103,21 +103,16 @@ def _cire(cluster, mode, sregistry, options, platform):
     ispace = cluster.ispace
     for n in range(nrepeats):
         # Extract potentially aliasing expressions
-        processed, extracted = extract(exprs, exclude, n)
-        if not extracted:
-            # Do not waste time
-            continue
+        mapper, extracted = extract(exprs, exclude, n)
 
         # Search aliasing expressions
         found = collect(extracted, ispace, ignore_collected, options)
+        if not found:
+            continue
 
         # Rule out aliasing expressions with a bad flops/memory trade-off
-        aliases.update(choose(found, processed, selector))
-
-        # Reinstate the unused extractions since the next iteration may
-        # perform a deeper search inside of them
-        subs = {v: k for k, v in extracted.items() if v not in aliases.aliaseds}
-        exprs = [e.xreplace(subs) for e in processed]
+        exprs, chosen = choose(found, exprs, mapper, selector)
+        aliases.update(chosen)
 
     # AliasMapper -> Schedule -> [Clusters]
     schedule = make_schedule(cluster, aliases, in_writeto, options)
@@ -195,9 +190,7 @@ class CallbacksInvariants(Callbacks):
                 if i not in extracted:
                     extracted[i] = make()
 
-        exprs = [uxreplace(e, extracted) for e in exprs]
-
-        return exprs, extracted
+        return extracted, extracted
 
     @classmethod
     def in_writeto(cls, max_par, dim, cluster):
@@ -266,9 +259,7 @@ class CallbacksSOPS(Callbacks):
                         symbol = extracted.setdefault(k, make())
                     mapper[i] = i.func(symbol, *others)
 
-        exprs = [uxreplace(e, mapper) for e in exprs]
-
-        return exprs, extracted
+        return mapper, extracted
 
     @classmethod
     def ignore_collected(cls, group):
@@ -464,13 +455,14 @@ def collect(extracted, ispace, ignore_collected, options):
     return aliases
 
 
-def choose(aliases, templated, selector):
+def choose(aliases, exprs, mapper, selector):
     """
     Use a cost model to select the aliases that are worth optimizing.
     """
     # Pass 1: a set of aliasing expressions is optimizable only if its cost
     # exceeds the mode's threshold
     candidates = OrderedDict()
+    aliaseds = []
     others = []
     for e, v in aliases.items():
         naliases = len(v.aliaseds)
@@ -478,14 +470,20 @@ def choose(aliases, templated, selector):
         score = selector(cost)
         if score > 0:
             candidates[e] = score
+            aliaseds.extend(v.aliaseds)
         else:
             others.append(e)
+
+    # Project the candidate aliases into exprs such that we can determine what
+    # the new working set would be
+    mapper = {k: v for k, v in mapper.items() if v.free_symbols & set(aliaseds)}
+    templated = [uxreplace(e, mapper) for e in exprs]
 
     # Pass 2: a set of aliasing expressions is optimizable if and only if it survived
     # Pass 1 above *and* the tradeoff between operation count and working set increase
     # is favorable
     owset = wset(others + templated)
-    retained = AliasMapper(aliases)
+    retained = AliasMapper()
     for e, v in aliases.items():
         try:
             score = candidates[e]
@@ -494,11 +492,13 @@ def choose(aliases, templated, selector):
         if score > 1 or \
            score == 1 and max(len(wset(e)), 1) > len(wset(e) & owset):
                # Chosen!
-               continue
+               retained[e] = v
 
-        retained.pop(e)
+    # Substitute the chosen aliasing sub-expressions
+    mapper = {k: v for k, v in mapper.items() if v.free_symbols & set(retained.aliaseds)}
+    exprs = [uxreplace(e, mapper) for e in exprs]
 
-    return retained
+    return exprs, retained
 
 
 def make_schedule(cluster, aliases, in_writeto, options):
