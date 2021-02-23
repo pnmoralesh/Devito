@@ -981,56 +981,6 @@ class TestAliases(object):
         assert op._profiler._sections['section0'].sops == 84
         assert len([i for i in FindSymbols().visit(op) if i.is_Array]) == 1
 
-    def test_composite(self):
-        """
-        Check that composite alias are optimized away through "smaller" aliases.
-
-        Examples
-        --------
-        Instead of the following:
-
-            t0 = a[x, y]
-            t1 = b[x, y]
-            t2 = a[x+1, y+1]*b[x, y]
-            out = t0 + t1 + t2  # pseudocode
-
-        We should get:
-
-            t0 = a[x, y]
-            t1 = b[x, y]
-            out = t0 + t1 + t0[x+1,y+1]*t1[x, y]  # pseudocode
-        """
-        grid = Grid(shape=(3, 3))
-        x, y = grid.dimensions  # noqa
-
-        g = Function(name='g', grid=grid)
-        u = TimeFunction(name='u', grid=grid)
-        u1 = TimeFunction(name='u1', grid=grid)
-
-        g.data[:] = 2.
-        u.data[:] = 1.
-        u1.data[:] = 1.
-
-        expr = (cos(g)*cos(g) +
-                sin(g)*sin(g) +
-                sin(g)*cos(g) +
-                sin(g[x + 1, y + 1])*cos(g[x + 1, y + 1]))*u
-
-        op0 = Operator(Eq(u.forward, expr), opt='noop')
-        op1 = Operator(Eq(u.forward, expr), opt=('advanced', {'cire-mincost-sops': 1}))
-
-        # Check code generation
-        # We expect two temporary Arrays, one for `cos(g)` and one for `sin(g)`
-        arrays = [i for i in FindSymbols().visit(op1) if i.is_Array]
-        assert len(arrays) == 2
-        assert all(i._mem_heap and not i._mem_external for i in arrays)
-
-        # Check numerical output
-        op0(time_M=1)
-        op1(time_M=1, u=u1)
-        assert np.allclose(u.data, u1.data, rtol=10e-7)
-
-    @pytest.mark.xfail(reason="Cannot deal with nested aliases yet")
     def test_nested_invariants(self):
         """
         Check that nested aliases are optimized away through "smaller" aliases.
@@ -1039,13 +989,12 @@ class TestAliases(object):
         --------
         Given the expression
 
-            sqrt(cos(a[x, y]))
+            sin(cos(a[x, y]))
 
         We should get
 
-            t0 = cos(a[x,y])
-            t1 = sqrt(t0)
-            out = t1  # pseudocode
+            t0 = sin(cos(a[x,y]))
+            out = t0
         """
         grid = Grid(shape=(3, 3))
         x, y = grid.dimensions  # noqa
@@ -1055,9 +1004,9 @@ class TestAliases(object):
 
         op = Operator(Eq(u.forward, u + sin(cos(g)) + sin(cos(g[x+1, y+1]))))
 
-        # We expect two temporary Arrays: `r1 = cos(g)` and `r2 = sqrt(r1)`
+        # We expect one temporary Array: `r0 = sin(cos(g))`
         arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
-        assert len(arrays) == 2
+        assert len(arrays) == 1
         assert all(i._mem_heap and not i._mem_external for i in arrays)
 
     @switchconfig(profiling='advanced')
@@ -1231,10 +1180,45 @@ class TestAliases(object):
         op1(time_M=1, u=u1)
         assert np.all(u.data == u1.data)
 
-    def test_catch_largest_invariant(self):
+    def test_catch_largest_invariant_v1(self):
         """
-        Make sure the largest time-invariant sub-expressions are extracted
-        such that their operation count exceeds a certain threshold.
+        Make sure the largest time-invariant sub-expressions are extracted.
+        """
+        grid = Grid(shape=(3, 3))
+        x, y = grid.dimensions  # noqa
+
+        g = Function(name='g', grid=grid)
+        u = TimeFunction(name='u', grid=grid)
+        u1 = TimeFunction(name='u1', grid=grid)
+
+        g.data[:] = 2.
+        u.data[:] = 1.
+        u1.data[:] = 1.
+
+        expr = (cos(g)*cos(g) +
+                sin(g)*sin(g) +
+                sin(g)*cos(g) +
+                sin(g[x + 1, y + 1])*cos(g[x + 1, y + 1]))*u
+
+        op0 = Operator(Eq(u.forward, expr), opt='noop')
+        op1 = Operator(Eq(u.forward, expr))
+
+        # Check code generation
+        # We expect only one temporary Array, used to lift all of the cos/sin
+        # out of the time loop
+        arrays = [i for i in FindSymbols().visit(op1) if i.is_Array]
+        assert len(arrays) == 1
+        assert all(i._mem_heap and not i._mem_external for i in arrays)
+
+        # Check numerical output
+        op0(time_M=1)
+        op1(time_M=1, u=u1)
+        assert np.allclose(u.data, u1.data, rtol=10e-7)
+
+    def test_catch_largest_invariant_v2(self):
+        """
+        Make sure both the largest time-invariant sub-expressions and the time-varying
+        sum-of-products induced by the spatial derivatives are extracted.
         """
         grid = Grid((10, 10))
 
@@ -1262,6 +1246,48 @@ class TestAliases(object):
         tmp_exprs = exprs[2:4]
         assert all(e.write in arrays for e in tmp_exprs)
         assert all(e.write._mem_heap and not e.write._mem_external for e in tmp_exprs)
+
+    def test_compound_invariants(self):
+        """
+        Check that compound time-invariant aliases are optimized away.
+        """
+        grid = Grid(shape=(3, 3))
+        x, y = grid.dimensions
+        t = grid.stepping_dim
+
+        f = Function(name='f', grid=grid)
+        g = Function(name='g', grid=grid)
+        u = TimeFunction(name='u', grid=grid)
+        u1 = TimeFunction(name='u', grid=grid)
+        v = TimeFunction(name='v', grid=grid)
+        v1 = TimeFunction(name='v', grid=grid)
+
+        f.data[:] = 1.4
+        g.data[:] = 2.1
+        u.data[:] = 1.3
+        u1.data[:] = 1.3
+        v.data[:] = 1.7
+        v1.data[:] = 1.7
+
+        eqn = Eq(u.forward, cos(f)*sin(g)*u +
+                            cos(g)*sin(f)*v +
+                            cos(f[x + 1, y + 1])*sin(g[x + 1, y + 1])*u[t, x + 1, y + 1])
+
+        op0 = Operator(eqn, opt='noop')
+        op1 = Operator(eqn)
+
+        # Check code generation
+        # We expect two temporary Arrays, one for cos(f)*sin(g) and one for cos(g)*sin(f)
+        # Old versions of devito would have used four Arrays, respectively for cos(f),
+        # cos(g), sin(f), sin(g)
+        arrays = [i for i in FindSymbols().visit(op1) if i.is_Array]
+        assert len(arrays) == 2
+        assert all(i._mem_heap and not i._mem_external for i in arrays)
+
+        # Check numerical output
+        op0(time_M=1)
+        op1(time_M=1, u=u1, v=v1)
+        assert np.allclose(u.data, u1.data, rtol=10e-7)
 
     def test_catch_duplicate_from_different_clusters(self):
         """
@@ -1311,8 +1337,7 @@ class TestAliases(object):
         eqns = [Eq(e.forward, e + 1),
                 Eq(f.forward, f*subexpr0 - f*subexpr1 + e.forward.dx)]
 
-        op = Operator(eqns, opt=('advanced', {'cire-repeats-inv': 2,
-                                              'cire-mincost-inv': 28}))
+        op = Operator(eqns, opt=('advanced', {'cire-mincost-inv': 28}))
 
         trees = retrieve_iteration_tree(op)
         assert len(trees) == 3

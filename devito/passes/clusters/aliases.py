@@ -95,6 +95,10 @@ def cire(cluster, mode, sregistry, options, platform):
     # trade-off between operation count reduction and working set size increase
     schedule, exprs, _ = max(variants, key=lambda i: i.score)
 
+    # Do not waste time reconstructing objects if no aliases found
+    if not schedule:
+        return cluster
+
     # Schedule -> [Clusters]
     clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
     clusters.append(rebuild(cluster, exprs, subs, schedule))
@@ -134,6 +138,9 @@ def _cire(cluster, mode, sregistry, options, platform):
     # AliasMapper -> Schedule
     schedule = make_schedule(cluster, aliases, in_writeto, options)
     schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
+
+    # The actual score is a 2-tuple <flop-reduction-score, workin-set-score>
+    score = (score, -len(aliases))
 
     return SpacePoint(schedule, exprs, score)
 
@@ -184,7 +191,6 @@ class CallbacksInvariants(Callbacks):
     def __new__(cls, cluster, sregistry, options):
         coptions = {}
         coptions['mincost'] = options['cire-mincost']['invariants']
-        coptions['compound'] = options.get('cire-compound', False)
 
         return super().__new__(cls, cluster, sregistry, coptions)
 
@@ -200,13 +206,11 @@ class CallbacksInvariants(Callbacks):
 
     @classmethod
     def extract(cls, options, make, exprs, exclude, n):
-        compound = options['compound']
-
         rule = cls._extract_rule(exprs, exclude, options)
 
         extracted = OrderedDict()
         for e in exprs:
-            for i in search(e, rule, 'all', 'dfs_first_hit'):  #TODO: BFS!
+            for i in search(e, rule, 'all', 'bfs_first_hit'):
                 if i not in extracted:
                     extracted[i] = make()
 
@@ -226,11 +230,30 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
 
     mode = 'inv-compound'
 
-    def __new__(cls, cluster, sregistry, options):
-        coptions = dict(options)
-        coptions['cire-compound'] = True
+    @classmethod
+    def extract(cls, options, make, exprs, exclude, n):
+        _, extracted = super().extract(options, make, exprs, exclude, n)
 
-        return super().__new__(cls, cluster, sregistry, coptions)
+        rule = lambda e: any(a in extracted for a in e.args)
+
+        mapper = {}
+        cextracted = OrderedDict()
+        for e in exprs:
+            for i in search(e, rule, 'all', 'dfs'):
+                if i in mapper or not i.is_commutative:
+                    continue
+
+                key = lambda a: a in extracted
+                terms, others = split(i.args, key)
+
+                k = i.func(*terms)
+                try:
+                    symbol = cextracted[k]
+                except KeyError:
+                    symbol = cextracted.setdefault(k, make())
+                mapper[i] = i.func(symbol, *others)
+
+        return mapper, cextracted
 
 
 class CallbacksDivs(CallbacksInvariants):
@@ -1100,9 +1123,6 @@ class AliasMapper(OrderedDict):
     @property
     def aliaseds(self):
         return flatten(i.aliaseds for i in self.values())
-
-
-# Utils
 
 
 def make_rotations_table(d, v):
