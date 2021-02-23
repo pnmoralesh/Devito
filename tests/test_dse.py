@@ -598,7 +598,7 @@ class TestAliases(object):
             return sqrt(f**2 + 1.)
 
         # Leads to 3D aliases despite the potential contraction along x and y
-        eqn = Eq(u.forward, u*(func(f) + func(f[x, y, z-1])))
+        eqn = Eq(u.forward, u*func(f) + u*func(f[x, y, z-1]))
 
         op0 = Operator(eqn, opt=('noop', {'openmp': True}))
         op1 = Operator(eqn, opt=('advanced', {'openmp': True}))
