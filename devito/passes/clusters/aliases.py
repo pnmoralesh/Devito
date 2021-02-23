@@ -81,10 +81,25 @@ def cire(cluster, mode, sregistry, options, platform):
     t0 = 2.0*t2[x,y,z]
     t1 = 3.0*t2[x,y,z+1]
     """
-    assert mode in list(callbacks_mapper)
+    if mode == 'invariants':
+        space = ('inv-basic', 'inv-compound')
+    elif mode in ('sops', 'divs'):
+        space = (mode,)
+    else:
+        assert False, "Unknown CIRE mode `%s`" % mode
 
-    #TODO: building SpacePoint...
-    return _cire(cluster, mode, sregistry, options, platform)
+    # Construct the space of variants. Each variant is given a score
+    variants = [_cire(cluster, mode, sregistry, options, platform) for mode in space]
+
+    # Pick the variant with the highest core, that is the variant with the best
+    # trade-off between operation count reduction and working set size increase
+    schedule, exprs, _ = max(variants, key=lambda i: i.score)
+
+    # Schedule -> [Clusters]
+    clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
+    clusters.append(rebuild(cluster, exprs, subs, schedule))
+
+    return clusters
 
 
 def _cire(cluster, mode, sregistry, options, platform):
@@ -98,6 +113,7 @@ def _cire(cluster, mode, sregistry, options, platform):
         callbacks_mapper[mode](cluster, sregistry, options)
 
     # Capture aliases within `exprs`
+    score = 0
     aliases = AliasMapper()
     exprs = cluster.exprs
     ispace = cluster.ispace
@@ -111,18 +127,15 @@ def _cire(cluster, mode, sregistry, options, platform):
             continue
 
         # Process the aliasing expressions with a good flops/memory trade-off
-        exprs, chosen = process(found, exprs, mapper, selector)
+        exprs, chosen, pscore = process(found, exprs, mapper, selector)
         aliases.update(chosen)
+        score += pscore
 
-    # AliasMapper -> Schedule -> [Clusters]
+    # AliasMapper -> Schedule
     schedule = make_schedule(cluster, aliases, in_writeto, options)
     schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
-    clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
 
-    # Rebuild `cluster` so as to use the newly created aliases
-    cluster = rebuild(cluster, exprs, subs, schedule)
-
-    return clusters + [cluster]
+    return SpacePoint(schedule, exprs, score)
 
 
 class Callbacks(object):
@@ -135,24 +148,20 @@ class Callbacks(object):
     mode = None
 
     def __new__(cls, cluster, sregistry, options):
-        min_cost = options['cire-mincost'].get(cls.mode)
-        max_par = options['cire-maxpar']
-        max_alias = options['cire-maxalias']
-
         make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
 
         return (cls.nrepeats(cluster),
-                partial(cls.extract, min_cost, max_alias, make),
+                partial(cls.extract, options, make),
                 cls.ignore_collected,
-                partial(cls.in_writeto, max_par),
-                partial(cls.selector, min_cost))
+                partial(cls.in_writeto, options),
+                partial(cls.selector, options))
 
     @classmethod
     def nrepeats(cls, cluster):
         return 1
 
     @classmethod
-    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
+    def extract(cls, options, make, exprs, exclude, n):
         raise NotImplementedError
 
     @classmethod
@@ -160,29 +169,40 @@ class Callbacks(object):
         return False
 
     @classmethod
-    def in_writeto(cls, max_par, dim, cluster):
+    def in_writeto(cls, options, dim, cluster):
         raise NotImplementedError
 
     @classmethod
-    def selector(cls, min_cost, cost):
-        return cost // min_cost
+    def selector(cls, options, cost):
+        mincost = options['mincost']
+
+        return cost // mincost
 
 
 class CallbacksInvariants(Callbacks):
 
-    mode = 'invariants'
+    def __new__(cls, cluster, sregistry, options):
+        coptions = {}
+        coptions['mincost'] = options['cire-mincost']['invariants']
+        coptions['compound'] = options.get('cire-compound', False)
+
+        return super().__new__(cls, cluster, sregistry, coptions)
 
     @classmethod
-    def _extract_rule(cls, exprs, exclude, min_cost):
+    def _extract_rule(cls, exprs, exclude, options):
+        mincost = options['mincost']
+
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = make_is_time_invariant(exprs)
-        rule2 = lambda e: estimate_cost(e, True) >= min_cost
+        rule2 = lambda e: estimate_cost(e, True) >= mincost
 
         return lambda e: rule0(e) and rule1(e) and rule2(e)
 
     @classmethod
-    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
-        rule = cls._extract_rule(exprs, exclude, min_cost)
+    def extract(cls, options, make, exprs, exclude, n):
+        compound = options['compound']
+
+        rule = cls._extract_rule(exprs, exclude, options)
 
         extracted = OrderedDict()
         for e in exprs:
@@ -193,8 +213,24 @@ class CallbacksInvariants(Callbacks):
         return extracted, extracted
 
     @classmethod
-    def in_writeto(cls, max_par, dim, cluster):
+    def in_writeto(cls, options, dim, cluster):
         return PARALLEL in cluster.properties[dim]
+
+
+class CallbacksInvariantsBasic(CallbacksInvariants):
+
+    mode = 'inv-basic'
+
+
+class CallbacksInvariantsCompound(CallbacksInvariants):
+
+    mode = 'inv-compound'
+
+    def __new__(cls, cluster, sregistry, options):
+        coptions = dict(options)
+        coptions['cire-compound'] = True
+
+        return super().__new__(cls, cluster, sregistry, coptions)
 
 
 class CallbacksDivs(CallbacksInvariants):
@@ -207,13 +243,21 @@ class CallbacksDivs(CallbacksInvariants):
                           all(i.function.is_const for i in e.base.free_symbols))
 
     @classmethod
-    def selector(cls, min_cost, cost):
+    def selector(cls, options, cost):
         return int(cost > 0)
 
 
 class CallbacksSOPS(Callbacks):
 
     mode = 'sops'
+
+    def __new__(cls, cluster, sregistry, options):
+        coptions = {}
+        coptions['mincost'] = options['cire-mincost']['sops']
+        coptions['maxpar'] = options['cire-maxpar']
+        coptions['maxalias'] = options['cire-maxalias']
+
+        return super().__new__(cls, cluster, sregistry, coptions)
 
     @classmethod
     def nrepeats(cls, cluster):
@@ -222,7 +266,9 @@ class CallbacksSOPS(Callbacks):
         return potential_max_deriv_order(cluster.exprs)
 
     @classmethod
-    def extract(cls, min_cost, max_alias, make, exprs, exclude, n):
+    def extract(cls, options, make, exprs, exclude, n):
+        maxalias = options['maxalias']
+
         #TODO.... -> apply_constraint ?
         rule0 = lambda e: not e.free_symbols & exclude
         rule = lambda e: rule0(e)
@@ -237,7 +283,7 @@ class CallbacksSOPS(Callbacks):
                 key = lambda a: a.is_Add
                 terms, others = split(list(i.args), key)
 
-                if max_alias:
+                if maxalias:
                     # Treat `e` as an FD expression and pull out the derivative
                     # coefficient from `i`
                     # Note: typically derivative coefficients are numbers, but
@@ -266,12 +312,15 @@ class CallbacksSOPS(Callbacks):
         return len(group) <= 1
 
     @classmethod
-    def in_writeto(cls, max_par, dim, cluster):
-        return max_par and PARALLEL in cluster.properties[dim]
+    def in_writeto(cls, options, dim, cluster):
+        maxpar = options['maxpar']
+
+        return maxpar and PARALLEL in cluster.properties[dim]
 
 
 callbacks_mapper = {
-    CallbacksInvariants.mode: CallbacksInvariants,
+    CallbacksInvariantsBasic.mode: CallbacksInvariantsBasic,
+    CallbacksInvariantsCompound.mode: CallbacksInvariantsCompound,
     CallbacksDivs.mode: CallbacksDivs,
     CallbacksSOPS.mode: CallbacksSOPS
 }
@@ -484,6 +533,7 @@ def process(aliases, exprs, mapper, selector):
     # Pass 2: a set of aliasing expressions is retained only if the tradeoff
     # between operation count reduction and working set increase is favorable
     owset = wset(others + templated)
+    tot = 0
     retained = AliasMapper()
     for e, v in aliases.items():
         try:
@@ -493,19 +543,20 @@ def process(aliases, exprs, mapper, selector):
         if score > 1 or \
            score == 1 and max(len(wset(e)), 1) > len(wset(e) & owset):
                retained[e] = v
+               tot += score
 
     # Substitute the chosen aliasing sub-expressions
     mapper = {k: v for k, v in mapper.items() if v.free_symbols & set(retained.aliaseds)}
     exprs = [uxreplace(e, mapper) for e in exprs]
 
-    return exprs, retained
+    return exprs, retained, tot
 
 
 def make_schedule(cluster, aliases, in_writeto, options):
     """
     Create a Schedule from an AliasMapper.
     """
-    max_par = options['cire-maxpar']
+    maxpar = options['cire-maxpar']
 
     dmapper = {}
     processed = []
@@ -542,7 +593,7 @@ def make_schedule(cluster, aliases, in_writeto, options):
 
             # We further bump the interval stamp if we were requested to trade
             # fusion for more collapse-parallelism
-            interval = interval.lift(interval.stamp + int(max_par))
+            interval = interval.lift(interval.stamp + int(maxpar))
 
             writeto.append(interval)
             intervals.append(interval)
@@ -1016,6 +1067,8 @@ AliasedGroup = namedtuple('AliasedGroup', 'intervals aliaseds distances')
 
 ScheduledAlias = namedtuple('ScheduledAlias', 'alias writeto ispace aliaseds indicess')
 ScheduledAlias.__new__.__defaults__ = (None,) * len(ScheduledAlias._fields)
+
+SpacePoint = namedtuple('SpacePoint', 'schedule exprs score')
 
 
 class Schedule(tuple):
