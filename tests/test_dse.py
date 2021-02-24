@@ -1180,9 +1180,9 @@ class TestAliases(object):
         op1(time_M=1, u=u1)
         assert np.all(u.data == u1.data)
 
-    def test_catch_largest_invariant_v1(self):
+    def test_catch_best_invariant_v1(self):
         """
-        Make sure the largest time-invariant sub-expressions are extracted.
+        Make sure the best time-invariant sub-expressions are extracted.
         """
         grid = Grid(shape=(3, 3))
         x, y = grid.dimensions  # noqa
@@ -1204,10 +1204,9 @@ class TestAliases(object):
         op1 = Operator(Eq(u.forward, expr))
 
         # Check code generation
-        # We expect only one temporary Array, used to lift all of the cos/sin
-        # out of the time loop
+        # We expect two temporary Arrays, one for each trascendental function
         arrays = [i for i in FindSymbols().visit(op1) if i.is_Array]
-        assert len(arrays) == 1
+        assert len(arrays) == 2
         assert all(i._mem_heap and not i._mem_external for i in arrays)
 
         # Check numerical output
@@ -1215,10 +1214,9 @@ class TestAliases(object):
         op1(time_M=1, u=u1)
         assert np.allclose(u.data, u1.data, rtol=10e-7)
 
-    def test_catch_largest_invariant_v2(self):
+    def test_catch_best_invariant_v2(self):
         """
-        Make sure both the largest time-invariant sub-expressions and the time-varying
-        sum-of-products induced by the spatial derivatives are extracted.
+        Make sure the best time-invariant sub-expressions are extracted.
         """
         grid = Grid((10, 10))
 

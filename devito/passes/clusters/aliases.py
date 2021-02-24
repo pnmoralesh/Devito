@@ -91,9 +91,9 @@ def cire(cluster, mode, sregistry, options, platform):
     # Construct the space of variants. Each variant is given a score
     variants = [_cire(cluster, mode, sregistry, options, platform) for mode in space]
 
-    # Pick the variant with the highest core, that is the variant with the best
+    # Pick the variant with the highest score, that is the variant with the best
     # trade-off between operation count reduction and working set size increase
-    schedule, exprs, _ = max(variants, key=lambda i: i.score)
+    schedule, exprs = pick_best(variants)
 
     # Do not waste time reconstructing objects if no aliases found
     if not schedule:
@@ -140,7 +140,7 @@ def _cire(cluster, mode, sregistry, options, platform):
     schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
 
     # The actual score is a 2-tuple <flop-reduction-score, workin-set-score>
-    score = (score, -len(aliases))
+    score = (score, len(aliases))
 
     return SpacePoint(schedule, exprs, score)
 
@@ -200,7 +200,8 @@ class CallbacksInvariants(Callbacks):
 
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = make_is_time_invariant(exprs)
-        rule2 = lambda e: estimate_cost(e, True) >= mincost
+        rule2 = lambda e: (e.is_Function or
+                           (e.is_Pow and e.exp.is_Number and e.exp < 1))
 
         return lambda e: rule0(e) and rule1(e) and rule2(e)
 
@@ -246,12 +247,15 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
                 key = lambda a: a in extracted
                 terms, others = split(i.args, key)
 
-                k = i.func(*terms)
-                try:
-                    symbol = cextracted[k]
-                except KeyError:
-                    symbol = cextracted.setdefault(k, make())
-                mapper[i] = i.func(symbol, *others)
+                if len(terms) == 1:
+                    mapper[i] = cextracted[i] = make()
+                else:
+                    k = i.func(*terms)
+                    try:
+                        symbol = cextracted[k]
+                    except KeyError:
+                        symbol = cextracted.setdefault(k, make())
+                    mapper[i] = i.func(symbol, *others)
 
         return mapper, cextracted
 
@@ -530,7 +534,7 @@ def collect(extracted, ispace, ignore_collected, options):
 def process(aliases, exprs, mapper, selector):
     """
     Analyze the detected aliases and, after applying a cost model to rule out
-    those aliases with a bad flops/memory trade-off, inject them into the original
+    the aliases with a bad flops/memory trade-off, inject them into the original
     expressions.
     """
     # Pass 1: a set of aliasing expressions is retained only if its cost
@@ -861,6 +865,30 @@ def lower_schedule(cluster, schedule, sregistry, options):
                                         dspace=dspace, properties=properties))
 
     return clusters, subs
+
+
+def pick_best(variants):
+    """
+    Use the variant score and heuristics to return the variant with the best
+    trade-off between operation count reduction and working set increase.
+    """
+    best = variants.pop(0)
+    for i in variants:
+        best_flop_score, best_ws_score = best.score
+        i_flop_score, i_ws_score = i.score
+
+        # The current heustic is fairly basic: the one with smaller working
+        # set size increase wins, unless there's a massive reduction in operation
+        # count in the other one
+        delta = i_ws_score - best_ws_score
+        if (delta > 0 and i_flop_score / best_flop_score > 100) or \
+           (delta == 0 and i_flop_score > best_flop_score) or \
+           (delta < 0 and best_flop_score / i_flop_score <= 100):
+            best = i
+
+    schedule, exprs, _ = best
+
+    return schedule, exprs
 
 
 def rebuild(cluster, exprs, subs, schedule):
