@@ -312,6 +312,14 @@ class Derivative(sympy.Derivative, Differentiable):
         # Evaluate finite-difference.
         # Note: evaluate and _eval_fd splitted for potential future different
         # types of discretizations.
+        do = self.deriv_order
+        if isinstance(do, int):
+            do = (do,)
+        for i, d in enumerate(self.dims):
+            expr_order = self.expr.time_order if d.is_Time else self.expr.space_order
+            if do[i] > expr_order:
+                raise ValueError("Expression order must be equal or greater than "
+                                 "Derivative order")
         return self._eval_fd(self.expr)
 
     @property

@@ -488,3 +488,16 @@ class TestFD(object):
             x0 = (None if shift is None else d + shift[i] * d.spacing if
                   type(shift) is tuple else d + shift * d.spacing)
             assert gi == getattr(f, 'd%s' % d.name)(x0=x0).evaluate
+
+    def test_lower_order_derivatives(self):
+        grid = Grid(tuple([11]*2))
+        u = TimeFunction(name="u", grid=grid, space_order=2, time_order=2)
+        m = TimeFunction(name="m", grid=grid, space_order=1, time_order=1)
+        try:
+            Operator(Eq(u.forward, u.biharmonic(1/m)))
+            Operator(Eq(u.forward, (u * m).dx2))
+            Operator(Eq(u.forward, (u * m).dt2))
+        except ValueError:
+            assert True
+        else:
+            assert False
