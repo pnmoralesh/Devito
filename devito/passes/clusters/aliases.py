@@ -248,7 +248,8 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
                 terms, others = split(i.args, key)
 
                 if len(terms) == 1:
-                    mapper[i] = cextracted[i] = make()
+                    k = terms[0]
+                    mapper[k] = cextracted[k] = make()
                 else:
                     k = i.func(*terms)
                     try:

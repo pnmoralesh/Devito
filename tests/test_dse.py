@@ -981,20 +981,9 @@ class TestAliases(object):
         assert op._profiler._sections['section0'].sops == 84
         assert len([i for i in FindSymbols().visit(op) if i.is_Array]) == 1
 
-    def test_nested_invariants(self):
+    def test_nested_invariants_v1(self):
         """
-        Check that nested aliases are optimized away through "smaller" aliases.
-
-        Examples
-        --------
-        Given the expression
-
-            sin(cos(a[x, y]))
-
-        We should get
-
-            t0 = sin(cos(a[x,y]))
-            out = t0
+        Check that nested aliases are optimized away.
         """
         grid = Grid(shape=(3, 3))
         x, y = grid.dimensions  # noqa
@@ -1008,6 +997,46 @@ class TestAliases(object):
         arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
         assert len(arrays) == 1
         assert all(i._mem_heap and not i._mem_external for i in arrays)
+
+    def test_nested_invariants_v2(self):
+        """
+        Check that nested aliases are optimized away.
+        """
+        grid = Grid(shape=(3, 3))
+        x, y = grid.dimensions  # noqa
+        h_x, h_y = grid.spacing_symbols
+
+        u = TimeFunction(name='u', grid=grid)
+        g = Function(name='g', grid=grid)
+
+        op = Operator(Eq(u.forward, u + (1 + cos(g))/h_x + (1 + cos(g[x+1, y+1]))/h_y))
+
+        # We expect one temporary Array: `r0 = cos(g)`
+        arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
+        assert len(arrays) == 1
+        assert all(i._mem_heap and not i._mem_external for i in arrays)
+
+    def test_nested_invariants_v3(self):
+        """
+        Check that nested aliases are optimized away.
+        """
+        grid = Grid(shape=(3, 3))
+        x, y = grid.dimensions  # noqa
+        h_x, h_y = grid.spacing_symbols
+
+        u = TimeFunction(name='u', grid=grid)
+        f = Function(name='f', grid=grid)
+        g = Function(name='g', grid=grid)
+
+        op = Operator(Eq(u.forward, (u*sin(f) + 1)*cos(g)*sin(g)))
+
+        # We expect two temporary Arrays: `r0 = sin(f)` and `r1 = cos(g)*sin(g)`
+        arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
+        assert len(arrays) == 2
+        assert all(i._mem_heap and not i._mem_external for i in arrays)
+        # Also make sure the inner `sin` has been correctly replaced
+        exprs = FindNodes(Expression).visit(op)
+        assert len(exprs[-1].expr.find(sin)) == 0
 
     @switchconfig(profiling='advanced')
     def test_twin_sops(self):
@@ -1365,17 +1394,15 @@ class TestAliases(object):
         pde = m * u.dt2 - u.laplace - s**2/12 * u.biharmonic(1/m)
         eq = Eq(u.forward, solve(pde, u.forward))
 
-        op0 = Operator(eq, opt=('advanced', {'openmp': False, 'cire-mincost-inv': 25}))
+        op0 = Operator(eq, opt=('advanced', {'openmp': False}))
         assert len([i for i in FindSymbols().visit(op0) if i.is_Array]) == 2
         assert op0._profiler._sections['section1'].sops == 109
 
-        op1 = Operator(eq, opt=('advanced', {'openmp': False, 'cire-maxalias': True,
-                                             'cire-mincost-inv': 25}))
+        op1 = Operator(eq, opt=('advanced', {'openmp': False, 'cire-maxalias': True}))
         assert len([i for i in FindSymbols().visit(op1) if i.is_Array]) == 4
         assert op1._profiler._sections['section1'].sops == 94
 
-        op2 = Operator(eq, opt=('advanced', {'openmp': False, 'cire-maxalias': True,
-                                             'cire-mincost-inv': 25}),
+        op2 = Operator(eq, opt=('advanced', {'openmp': False, 'cire-maxalias': True}),
                        subs={i: 0.5 for i in grid.spacing_symbols})
         assert len([i for i in FindSymbols().visit(op2) if i.is_Array]) == 2
         assert op2._profiler._sections['section1'].sops == 57
@@ -1441,7 +1468,7 @@ class TestAliases(object):
         op = Operator(eqns, opt=('advanced', {'cire-rotate': rotate}))
 
         arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
-        assert len(arrays) == 2
+        assert len(arrays) == 3
         assert all(i._mem_heap and not i._mem_external for i in arrays)
 
     def test_full_shape_big_temporaries(self):
