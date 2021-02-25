@@ -245,18 +245,20 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
                     continue
 
                 key = lambda a: a in extracted
-                terms, others = split(i.args, key)
+                terms, others = split(list(i.args), key)
 
-                if len(terms) == 1:
-                    k = terms[0]
-                    mapper[k] = cextracted[k] = make()
-                else:
-                    k = i.func(*terms)
+                assert len(terms) >= 1
+                base = terms.pop(0)
+                if terms:
+                    k = i.func(base, *terms)
                     try:
                         symbol = cextracted[k]
                     except KeyError:
                         symbol = cextracted.setdefault(k, make())
-                    mapper[i] = i.func(symbol, *others)
+                    mapper[i] = Uxmapper.fromkeys(terms)
+                    mapper[i][base] = symbol
+                else:
+                    mapper[base] = cextracted[base] = make()
 
         return mapper, cextracted
 
@@ -1152,6 +1154,13 @@ class AliasMapper(OrderedDict):
     @property
     def aliaseds(self):
         return flatten(i.aliaseds for i in self.values())
+
+
+class Uxmapper(dict):
+
+    @property
+    def free_symbols(self):
+        return {v for v in self.values() if v is not None}
 
 
 def make_rotations_table(d, v):

@@ -1029,7 +1029,6 @@ class TestAliases(object):
         g = Function(name='g', grid=grid)
 
         op = Operator(Eq(u.forward, (u*sin(f) + 1)*cos(g)*sin(g)))
-        from IPython import embed; embed()
 
         # We expect two temporary Arrays: `r0 = sin(f)` and `r1 = cos(g)*sin(g)`
         arrays = [i for i in FindSymbols().visit(op) if i.is_Array]

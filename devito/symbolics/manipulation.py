@@ -39,15 +39,16 @@ def uxreplace(expr, rule):
 
 
 def _uxreplace(expr, rule):
-    changed = False
-
     if expr in rule:
         v = rule[expr]
         if not isinstance(v, dict):
             return v, True
         args, eargs = split(expr.args, lambda i: i in v)
+        args = [v[i] for i in args if v[i] is not None]
+        changed = True
     else:
         args, eargs = [], expr.args
+        changed = False
 
     if rule:
         for a in eargs:
