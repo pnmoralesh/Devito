@@ -27,20 +27,30 @@ def uxreplace(expr, rule):
 
     By avoiding re-evaluations, this function is typically much quicker than
     SymPy's xreplace.
+
+    A further feature of ``uxreplace`` consists of enabling the substitution
+    of compound nodes. Consider the expression `a*b*c*d`; if one wants to replace
+    `b*c` with say `e*f`, then the following mapper may be passed:
+    `{a*b*c*d: {b: e*f, c: None}}`. This way, only the `b` and `c` pertaining to
+    `a*b*c*d` will be affected, and in particular `c` will be dropped, while `b`
+    will be replaced by `e*f`, thus obtaining `a*d*e*f`.
     """
     return _uxreplace(expr, rule)[0]
 
 
 def _uxreplace(expr, rule):
-    """
-    Helper for uxreplace.
-    """
+    changed = False
+
     if expr in rule:
-        return rule[expr], True
-    elif rule:
-        args = []
-        changed = False
-        for a in expr.args:
+        v = rule[expr]
+        if not isinstance(v, dict):
+            return v, True
+        args, eargs = split(expr.args, lambda i: i in v)
+    else:
+        args, eargs = [], expr.args
+
+    if rule:
+        for a in eargs:
             try:
                 ax, flag = _uxreplace(a, rule)
                 args.append(ax)
@@ -50,6 +60,7 @@ def _uxreplace(expr, rule):
                 args.append(a)
         if changed:
             return _uxreplace_handle(expr, args), True
+
     return expr, False
 
 
