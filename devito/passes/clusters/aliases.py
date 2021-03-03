@@ -88,8 +88,16 @@ def cire(cluster, mode, sregistry, options, platform):
     else:
         assert False, "Unknown CIRE mode `%s`" % mode
 
-    # Construct the space of variants. Each variant is given a score
-    variants = [_cire(cluster, mode, sregistry, options, platform) for mode in space]
+    #TODO: exclude is broken... consider:
+    #a[x, y] = ...
+    #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
+    exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
+
+    # Construct the space of variants
+    variants = []
+    for mode in space:
+        callbacks = callbacks_mapper[mode](cluster, exclude, sregistry, options)
+        variants.append(_cire(cluster, callbacks, options))
     if not any(i.schedule for i in variants):
         return cluster
 
@@ -98,21 +106,15 @@ def cire(cluster, mode, sregistry, options, platform):
     schedule, exprs = pick_best(variants)
 
     # Schedule -> [Clusters]
+    schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
     clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
     clusters.append(rebuild(cluster, exprs, subs, schedule))
 
     return clusters
 
 
-def _cire(cluster, mode, sregistry, options, platform):
-    #TODO: exclude is broken... consider:
-    #a[x, y] = ...
-    #u[x, y] = ... a[x-1, y] + a[x+1, y] ...
-    exclude = {i.source.indexed for i in cluster.scope.d_flow.independent()}
-
-    # Get the callbacks
-    nrepeats, extract, ignore_collected, in_writeto, selector =\
-        callbacks_mapper[mode](cluster, sregistry, options)
+def _cire(cluster, callbacks, options):
+    nrepeats, extract, ignore_collected, in_writeto, selector = callbacks
 
     # Capture aliases within `exprs`
     score = 0
@@ -121,7 +123,7 @@ def _cire(cluster, mode, sregistry, options, platform):
     ispace = cluster.ispace
     for n in range(nrepeats):
         # Extract potentially aliasing expressions
-        mapper = extract(exprs, exclude, n)
+        mapper = extract(exprs, n)
 
         # Search aliasing expressions
         found = collect(mapper.extracted, ispace, ignore_collected, options)
@@ -135,7 +137,6 @@ def _cire(cluster, mode, sregistry, options, platform):
 
     # AliasMapper -> Schedule
     schedule = make_schedule(cluster, aliases, in_writeto, options)
-    schedule = optimize_schedule(cluster, schedule, platform, sregistry, options)
 
     # The actual score is a 2-tuple <flop-reduction-score, workin-set-score>
     score = (score, len(aliases))
@@ -152,11 +153,11 @@ class Callbacks(object):
 
     mode = None
 
-    def __new__(cls, cluster, sregistry, options):
+    def __new__(cls, cluster, exclude, sregistry, options):
         make = lambda: Scalar(name=sregistry.make_name('dummy'), dtype=cluster.dtype)
 
         return (cls.nrepeats(cluster),
-                partial(cls.extract, options, make),
+                partial(cls.extract, exclude, options, make),
                 cls.ignore_collected,
                 partial(cls.in_writeto, options),
                 partial(cls.selector, options))
@@ -166,7 +167,7 @@ class Callbacks(object):
         return 1
 
     @classmethod
-    def extract(cls, options, make, exprs, exclude, n):
+    def extract(cls, exclude, options, make, exprs, n):
         raise NotImplementedError
 
     @classmethod
@@ -186,11 +187,11 @@ class Callbacks(object):
 
 class CallbacksInvariants(Callbacks):
 
-    def __new__(cls, cluster, sregistry, options):
+    def __new__(cls, cluster, exclude, sregistry, options):
         coptions = {}
         coptions['mincost'] = options['cire-mincost']['invariants']
 
-        return super().__new__(cls, cluster, sregistry, coptions)
+        return super().__new__(cls, cluster, exclude, sregistry, coptions)
 
     @classmethod
     def _extract_rule(cls, exprs, exclude, options):
@@ -202,7 +203,7 @@ class CallbacksInvariants(Callbacks):
         return lambda e: rule0(e) and rule1(e) and rule2(e)
 
     @classmethod
-    def extract(cls, options, make, exprs, exclude, n):
+    def extract(cls, exclude, options, make, exprs, n):
         rule = cls._extract_rule(exprs, exclude, options)
 
         mapper = Uxmapper()
@@ -227,8 +228,8 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
     mode = 'inv-compound'
 
     @classmethod
-    def extract(cls, options, make, exprs, exclude, n):
-        extracted = super().extract(options, make, exprs, exclude, n).extracted
+    def extract(cls, exclude, options, make, exprs, n):
+        extracted = super().extract(exclude, options, make, exprs, n).extracted
 
         rule = lambda e: any(a in extracted for a in e.args)
 
@@ -264,13 +265,13 @@ class CallbacksSOPS(Callbacks):
 
     mode = 'sops'
 
-    def __new__(cls, cluster, sregistry, options):
+    def __new__(cls, cluster, exclude, sregistry, options):
         coptions = {}
         coptions['mincost'] = options['cire-mincost']['sops']
         coptions['maxpar'] = options['cire-maxpar']
         coptions['maxalias'] = options['cire-maxalias']
 
-        return super().__new__(cls, cluster, sregistry, coptions)
+        return super().__new__(cls, cluster, exclude, sregistry, coptions)
 
     @classmethod
     def nrepeats(cls, cluster):
@@ -279,7 +280,7 @@ class CallbacksSOPS(Callbacks):
         return potential_max_deriv_order(cluster.exprs)
 
     @classmethod
-    def extract(cls, options, make, exprs, exclude, n):
+    def extract(cls, exclude, options, make, exprs, n):
         maxalias = options['maxalias']
 
         #TODO.... -> apply_constraint ?
