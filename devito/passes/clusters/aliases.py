@@ -97,7 +97,7 @@ def cire(cluster, mode, sregistry, options, platform):
     variants = []
     for mode in space:
         callbacks = callbacks_mapper[mode](cluster, exclude, sregistry, options)
-        variants.append(_cire(cluster, callbacks, options))
+        variants.append(make_schedule(cluster, callbacks, options))
     if not any(i.schedule for i in variants):
         return cluster
 
@@ -113,7 +113,7 @@ def cire(cluster, mode, sregistry, options, platform):
     return clusters
 
 
-def _cire(cluster, callbacks, options):
+def make_schedule(cluster, callbacks, options):
     nrepeats, extract, ignore_collected, in_writeto, selector = callbacks
 
     # Capture aliases within `exprs`
@@ -136,7 +136,7 @@ def _cire(cluster, callbacks, options):
         score += pscore
 
     # AliasMapper -> Schedule
-    schedule = make_schedule(cluster, aliases, in_writeto, options)
+    schedule = lower_aliases(cluster, aliases, in_writeto, options)
 
     # The actual score is a 2-tuple <flop-reduction-score, workin-set-score>
     score = (score, len(aliases))
@@ -556,7 +556,7 @@ def process(aliases, exprs, mapper, selector):
     return exprs, retained, tot
 
 
-def make_schedule(cluster, aliases, in_writeto, options):
+def lower_aliases(cluster, aliases, in_writeto, options):
     """
     Create a Schedule from an AliasMapper.
     """
