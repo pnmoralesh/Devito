@@ -1296,9 +1296,9 @@ class TestAliases(object):
         v.data[:] = 1.7
         v1.data[:] = 1.7
 
-        eqn = Eq(u.forward, cos(f)*sin(g)*u +
-                            cos(g)*sin(f)*v +
-                            cos(f[x + 1, y + 1])*sin(g[x + 1, y + 1])*u[t, x + 1, y + 1])
+        eqn = Eq(u.forward, (cos(f)*sin(g)*u +
+                             cos(g)*sin(f)*v +
+                             cos(f[x+1, y+1])*sin(g[x+1, y+1])*u[t, x+1, y+1]))
 
         op0 = Operator(eqn, opt='noop')
         op1 = Operator(eqn)
@@ -1348,8 +1348,6 @@ class TestAliases(object):
     def test_hoisting_if_coupled(self):
         """
         Test that coupled aliases are successfully hoisted out of the time loop.
-        This test also checks the correct behaviour of the Operator opt-option
-        ``cire-repeats-inv``.
         """
         grid = Grid((10, 10))
 

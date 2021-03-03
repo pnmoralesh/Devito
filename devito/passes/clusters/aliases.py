@@ -1,17 +1,17 @@
 from collections import OrderedDict, defaultdict, namedtuple
 from functools import partial
-from itertools import groupby, product
+from itertools import groupby
 
 from cached_property import cached_property
 import numpy as np
 
 from devito.ir import (SEQUENTIAL, PARALLEL, PARALLEL_IF_PVT, ROUNDABLE, DataSpace,
                        Forward, IterationInstance, IterationSpace, Interval,
-                       IntervalGroup, LabeledVector, Scope, detect_accesses,
-                       build_intervals, normalize_properties)
+                       IntervalGroup, LabeledVector, detect_accesses, build_intervals,
+                       normalize_properties)
 from devito.passes.clusters.utils import cluster_pass, make_is_time_invariant
 from devito.symbolics import (compare_ops, estimate_cost, q_constant, q_leaf,
-                              q_terminalop, retrieve_indexed, search, uxreplace)
+                              retrieve_indexed, search, uxreplace)
 from devito.tools import as_tuple, flatten, split
 from devito.types import (Array, TempFunction, Eq, Scalar, ModuloDimension,
                           CustomDimension, IncrDimension)
@@ -90,14 +90,12 @@ def cire(cluster, mode, sregistry, options, platform):
 
     # Construct the space of variants. Each variant is given a score
     variants = [_cire(cluster, mode, sregistry, options, platform) for mode in space]
+    if not any(i.schedule for i in variants):
+        return cluster
 
     # Pick the variant with the highest score, that is the variant with the best
     # trade-off between operation count reduction and working set size increase
     schedule, exprs = pick_best(variants)
-
-    # Do not waste time reconstructing objects if no aliases found
-    if not schedule:
-        return cluster
 
     # Schedule -> [Clusters]
     clusters, subs = lower_schedule(cluster, schedule, sregistry, options)
@@ -196,8 +194,6 @@ class CallbacksInvariants(Callbacks):
 
     @classmethod
     def _extract_rule(cls, exprs, exclude, options):
-        mincost = options['mincost']
-
         rule0 = lambda e: not e.free_symbols & exclude
         rule1 = make_is_time_invariant(exprs)
         rule2 = lambda e: (e.is_Function or
@@ -572,8 +568,8 @@ def process(aliases, exprs, mapper, selector):
             score = 0
         if score > 1 or \
            score == 1 and max(len(wset(e)), 1) > len(wset(e) & owset):
-               retained[e] = v
-               tot += score
+            retained[e] = v
+            tot += score
 
     # Substitute the chosen aliasing sub-expressions
     mapper = {k: v for k, v in mapper.items() if v.free_symbols & set(retained.aliaseds)}
@@ -878,6 +874,10 @@ def pick_best(variants):
     best = variants.pop(0)
     for i in variants:
         best_flop_score, best_ws_score = best.score
+        if best_flop_score == 0:
+            best = i
+            continue
+
         i_flop_score, i_ws_score = i.score
 
         # The current heustic is fairly basic: the one with smaller working
