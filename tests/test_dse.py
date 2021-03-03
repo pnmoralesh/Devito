@@ -1555,7 +1555,7 @@ class TestAliases(object):
         # all redundancies have been detected correctly
         assert summary[('section0', None)].ops == 115
 
-    @pytest.mark.parametrize('so_ops', [(4, 39), (8, 79)])
+    @pytest.mark.parametrize('so_ops', [(4, 33), (8, 69)])
     @pytest.mark.parametrize('rotate', [False, True])
     @switchconfig(profiling='advanced')
     def test_tti_adjoint_akin(self, so_ops, rotate):
@@ -1656,10 +1656,10 @@ class TestAliases(object):
         # Check code generation
         xs, ys, zs = self.get_params(op1, 'x0_blk0_size', 'y0_blk0_size', 'z_size')
         arrays = [i for i in FindSymbols().visit(op1._func_table['bf0']) if i.is_Array]
-        assert len(arrays) == 6
+        assert len(arrays) == 4
         assert len(FindNodes(VExpanded).visit(op1._func_table['bf0'])) == 2
-        self.check_array(arrays[4], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
-        self.check_array(arrays[5], ((3, 3),), (zs+6,))
+        self.check_array(arrays[2], ((6, 6), (6, 6), (6, 6)), (xs+12, ys+12, zs+12))
+        self.check_array(arrays[3], ((3, 3),), (zs+6,))
 
         # Check numerical output
         op0(time_M=1)
@@ -1668,7 +1668,7 @@ class TestAliases(object):
 
         # Also check against expected operation count to make sure
         # all redundancies have been detected correctly
-        assert summary[('section1', None)].ops == 92
+        assert summary[('section1', None)].ops == 80
 
     @pytest.mark.parametrize('rotate', [False, True])
     @switchconfig(profiling='advanced')
@@ -1717,7 +1717,7 @@ class TestAliases(object):
     @switchconfig(profiling='advanced')
     @pytest.mark.parametrize('expr,exp_arrays,exp_ops', [
         ('f.dx.dx + g.dx.dx',
-         (1, 1, 2, (1, 0)), (46, 40, 49, 17)),
+         (1, 1, 2, (0, 1)), (46, 40, 49, 17)),
         ('v.dx.dx + p.dx.dx',
          (2, 2, 2, (0, 2)), (61, 49, 49, 25)),
         ('(v.dx + v.dy).dx - (v.dx + v.dy).dy + 2*f.dx.dx + f*f.dy.dy + f.dx.dx(x0=1)',
@@ -1725,7 +1725,7 @@ class TestAliases(object):
         ('(g*(1 + f)*v.dx).dx + (2*g*f*v.dx).dx',
          (1, 1, 2, (0, 1)), (50, 44, 53, 19)),
         ('g*(f.dx.dx + g.dx.dx)',
-         (1, 1, 2, (1, 0)), (47, 41, 50, (17, 1))),
+         (1, 1, 2, (0, 1)), (47, 41, 50, 18)),
     ])
     def test_sum_of_nested_derivatives(self, expr, exp_arrays, exp_ops):
         """
@@ -2000,7 +2000,6 @@ class TestAliases(object):
         assert len(arrays) == 1
 
 
-# Acoustic
 class TestIsoAcoustic(object):
 
     def run_acoustic_forward(self, opt=None):
@@ -2107,8 +2106,8 @@ class TestTTI(object):
         assert np.allclose(self.tti_noopt[1].data, rec.data, atol=10e-1)
 
         # Check expected opcount/oi
-        assert summary[('section1', None)].ops == 103
-        assert np.isclose(summary[('section1', None)].oi, 1.625, atol=0.001)
+        assert summary[('section1', None)].ops == 91
+        assert np.isclose(summary[('section1', None)].oi, 1.524, atol=0.001)
 
         # With optimizations enabled, there should be exactly four IncrDimensions
         op = wavesolver.op_fwd(kernel='centered')
@@ -2126,12 +2125,12 @@ class TestTTI(object):
         #   Arrays are defined globally and passed as arguments to bf0
         arrays = [i for i in FindSymbols().visit(op) if i.is_Array]
         extra_arrays = 0 if configuration['language'] == 'openmp' else 2
-        assert len(arrays) == 5 + extra_arrays
+        assert len(arrays) == 4 + extra_arrays
         assert all(i._mem_heap and not i._mem_external for i in arrays)
         arrays = [i for i in FindSymbols().visit(op._func_table['bf0']) if i.is_Array]
-        assert len(arrays) == 7
+        assert len(arrays) == 6
         assert all(not i._mem_external for i in arrays)
-        assert len([i for i in arrays if i._mem_heap]) == 7
+        assert len([i for i in arrays if i._mem_heap]) == 6
         vexpanded = 2 if configuration['language'] == 'openmp' else 0
         assert len(FindNodes(VExpanded).visit(op._func_table['bf0'])) == vexpanded
 
@@ -2154,7 +2153,7 @@ class TestTTI(object):
 
     @switchconfig(profiling='advanced')
     @pytest.mark.parametrize('space_order,expected', [
-        (8, 173), (16, 307)
+        (8, 153), (16, 271)
     ])
     def test_opcounts(self, space_order, expected):
         op = self.tti_operator(opt='advanced', space_order=space_order)
