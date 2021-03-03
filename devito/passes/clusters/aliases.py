@@ -10,8 +10,8 @@ from devito.ir import (SEQUENTIAL, PARALLEL, PARALLEL_IF_PVT, ROUNDABLE, DataSpa
                        IntervalGroup, LabeledVector, detect_accesses, build_intervals,
                        normalize_properties)
 from devito.passes.clusters.utils import cluster_pass, make_is_time_invariant
-from devito.symbolics import (compare_ops, estimate_cost, q_constant, q_leaf,
-                              retrieve_indexed, search, uxreplace)
+from devito.symbolics import (Uxmapper, compare_ops, estimate_cost, q_constant,
+                              q_leaf, retrieve_indexed, search, uxreplace)
 from devito.tools import as_tuple, flatten, split
 from devito.types import (Array, TempFunction, Eq, Scalar, ModuloDimension,
                           CustomDimension, IncrDimension)
@@ -121,10 +121,10 @@ def _cire(cluster, mode, sregistry, options, platform):
     ispace = cluster.ispace
     for n in range(nrepeats):
         # Extract potentially aliasing expressions
-        mapper, extracted = extract(exprs, exclude, n)
+        mapper = extract(exprs, exclude, n)
 
         # Search aliasing expressions
-        found = collect(extracted, ispace, ignore_collected, options)
+        found = collect(mapper.extracted, ispace, ignore_collected, options)
         if not found:
             continue
 
@@ -205,13 +205,12 @@ class CallbacksInvariants(Callbacks):
     def extract(cls, options, make, exprs, exclude, n):
         rule = cls._extract_rule(exprs, exclude, options)
 
-        extracted = OrderedDict()
+        mapper = Uxmapper()
         for e in exprs:
             for i in search(e, rule, 'all', 'bfs_first_hit'):
-                if i not in extracted:
-                    extracted[i] = make()
+                mapper.add(i, make)
 
-        return extracted, extracted
+        return mapper
 
     @classmethod
     def in_writeto(cls, options, dim, cluster):
@@ -229,34 +228,22 @@ class CallbacksInvariantsCompound(CallbacksInvariants):
 
     @classmethod
     def extract(cls, options, make, exprs, exclude, n):
-        _, extracted = super().extract(options, make, exprs, exclude, n)
+        extracted = super().extract(options, make, exprs, exclude, n).extracted
 
         rule = lambda e: any(a in extracted for a in e.args)
 
-        mapper = {}
-        cextracted = OrderedDict()
+        mapper = Uxmapper()
         for e in exprs:
             for i in search(e, rule, 'all', 'dfs'):
-                if i in mapper or not i.is_commutative:
+                if not i.is_commutative:
                     continue
 
                 key = lambda a: a in extracted
-                terms, others = split(list(i.args), key)
+                terms, others = split(i.args, key)
 
-                assert len(terms) >= 1
-                base = terms.pop(0)
-                if terms:
-                    k = i.func(base, *terms)
-                    try:
-                        symbol = cextracted[k]
-                    except KeyError:
-                        symbol = cextracted.setdefault(k, make())
-                    mapper[i] = Uxmapper.fromkeys(terms)
-                    mapper[i][base] = symbol
-                else:
-                    mapper[base] = cextracted[base] = make()
+                mapper.add(i, make, terms)
 
-        return mapper, cextracted
+        return mapper
 
 
 class CallbacksDivs(CallbacksInvariants):
@@ -299,15 +286,11 @@ class CallbacksSOPS(Callbacks):
         rule0 = lambda e: not e.free_symbols & exclude
         rule = lambda e: rule0(e)
 
-        mapper = {}
-        extracted = OrderedDict()
+        mapper = Uxmapper()
         for e in exprs:
             for i in search_potential_deriv(e, n):
-                if i in mapper:
-                    continue
-
                 key = lambda a: a.is_Add
-                terms, others = split(list(i.args), key)
+                terms, others = split(i.args, key)
 
                 if maxalias:
                     # Treat `e` as an FD expression and pull out the derivative
@@ -321,17 +304,11 @@ class CallbacksSOPS(Callbacks):
                     if e.grid is not None and terms:
                         key = partial(maybe_coeff_key, e.grid)
                         others, more_terms = split(others, key)
-                        terms.extend(more_terms)
+                        terms += more_terms
 
-                if terms:
-                    k = i.func(*terms)
-                    try:
-                        symbol = extracted[k]
-                    except KeyError:
-                        symbol = extracted.setdefault(k, make())
-                    mapper[i] = i.func(symbol, *others)
+                mapper.add(i, make, terms)
 
-        return mapper, extracted
+        return mapper
 
     @classmethod
     def ignore_collected(cls, group):
@@ -1154,13 +1131,6 @@ class AliasMapper(OrderedDict):
     @property
     def aliaseds(self):
         return flatten(i.aliaseds for i in self.values())
-
-
-class Uxmapper(dict):
-
-    @property
-    def free_symbols(self):
-        return {v for v in self.values() if v is not None}
 
 
 def make_rotations_table(d, v):

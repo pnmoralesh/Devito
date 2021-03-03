@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from functools import singledispatch
 
@@ -8,11 +8,12 @@ from sympy.core.add import _addsort
 from sympy.core.mul import _mulsort
 
 from devito.symbolics.search import retrieve_indexed, retrieve_functions
-from devito.tools import as_tuple, flatten, split
+from devito.tools import as_list, as_tuple, flatten, split
 from devito.types.equation import Eq
 
 __all__ = ['xreplace_indices', 'pow_to_mul', 'as_symbol', 'indexify',
-           'split_affine', 'subs_op_args', 'uxreplace', 'aligned_indices']
+           'split_affine', 'subs_op_args', 'uxreplace', 'aligned_indices',
+           'Uxmapper']
 
 
 def uxreplace(expr, rule):
@@ -104,6 +105,53 @@ def _eval_numbers(expr, args):
     numbers, others = split(args, lambda i: i.is_Number)
     if len(numbers) > 1:
         args[:] = [expr.func(*numbers)] + others
+
+
+class Uxmapper(dict):
+
+    """
+    A helper mapper for uxreplace. Any dict can be passed as subs to uxreplace,
+    but with a Uxmapper it is also possible to easily express compound replacements,
+    such as sub-expressions within n-ary operations (e.g., `a*b` inside the 4-way
+    Mul `a*c*b*d`).
+    """
+
+    class Uxsubmap(dict):
+        @property
+        def free_symbols(self):
+            return {v for v in self.values() if v is not None}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extracted = OrderedDict()
+
+    def add(self, expr, make, terms=None):
+        """
+        Without ``terms``: add ``expr`` to the mapper binding it to the symbol
+        generated with the callback ``make``.
+        With ``terms``: add the compound sub-expression made of ``terms`` to the
+        mapper. ``terms`` is a list of one or more items in ``expr.args``.
+        """
+        if expr in self:
+            return
+
+        if not terms:
+            self[expr] = self.extracted[expr] = make()
+            return
+
+        terms = as_list(terms)
+
+        base = terms.pop(0)
+        if terms:
+            k = expr.func(base, *terms)
+            try:
+                symbol = self.extracted[k]
+            except KeyError:
+                symbol = self.extracted.setdefault(k, make())
+            self[expr] = self.Uxsubmap.fromkeys(terms)
+            self[expr][base] = symbol
+        else:
+            self[base] = self.extracted[base] = make()
 
 
 def xreplace_indices(exprs, mapper, key=None):
