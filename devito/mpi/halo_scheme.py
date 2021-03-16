@@ -430,4 +430,3 @@ def classify(exprs, ispace):
         mapper[f] = HaloSchemeEntry(frozendict(loc_indices), frozenset(halos))
 
     return mapper
-    
