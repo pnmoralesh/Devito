@@ -157,9 +157,9 @@ class TestAutotuningWithSkewing(object):
 
     def test_skewed_tti_aggressive(self):
         from test_dse import TestTTI
-        wave_solver = TestTTI().tti_operator(opt=('blocking', 'skewing'))
+        wave_solver = TestTTI().tti_operator(opt=('blocking'))
         op = wave_solver.op_fwd(kernel='centered')
-        op.apply(time=0, autotune='aggressive')
+        op.apply(time=0, autotune='aggressive', dt=0.1)
         assert op._state['autotuning'][0]['runs'] == 30
 
     def test_multiple_skewed_blocking(self):

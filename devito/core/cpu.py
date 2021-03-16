@@ -325,7 +325,7 @@ class Cpu64CustomOperator(Cpu64OperatorMixin, CustomOperator):
             'cire-divs': lambda i: cire(i, 'divs', sregistry, options, platform),
             'cse': lambda i: cse(i, sregistry),
             'opt-pows': optimize_pows,
-            'topofuse': lambda i: fuse(i, toposort=True),
+            'topofuse': lambda i: fuse(i, toposort=True)
         }
 
     @classmethod
